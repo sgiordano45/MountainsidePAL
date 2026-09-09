@@ -49,6 +49,10 @@
             <button id="vCal"  aria-pressed="false">Calendar</button>
           </div>
         </div>
+        <div class="field" style="flex:0 0 auto">
+          <label>&nbsp;</label>
+          <button class="btn btn--ghost btn--sm" id="icsBtn">Add to calendar</button>
+        </div>
       </div>
 
       <div id="content"><p class="empty">Loading schedule…</p></div>
@@ -67,6 +71,7 @@ import {
   eventTitle, groupByDay, mapsUrl, parseLocal, formatTime
 } from "./js/events.js";
 import { renderCalendar } from "./js/calendar.js";
+import { buildICS, downloadICS } from "./js/ics.js";
 
 const content = document.getElementById("content");
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c =>
@@ -108,6 +113,7 @@ async function init() {
   }
   document.getElementById("vList").onclick = () => setView("list");
   document.getElementById("vCal").onclick  = () => setView("calendar");
+  document.getElementById("icsBtn").onclick = exportICS;
 
   render();
 }
@@ -214,6 +220,16 @@ function row(ev) {
         <span class="badge badge--${esc(ev.type)}">${esc(ev.type)}</span>
       </div>
     </div>`;
+}
+
+/** Export exactly what the filters are showing, so the file matches the screen. */
+function exportICS() {
+  const evs = filtered({ ignoreWhen: state.when === "all" });
+  if (!evs.length) return alert("Nothing to export with these filters.");
+  const team = state.team && state.teamsById[state.team];
+  const name = team ? `${team.name} — Mountainside PAL` : "Mountainside PAL Basketball";
+  const file = team ? `mountainside-pal-${state.team}.ics` : "mountainside-pal.ics";
+  downloadICS(buildICS(evs, state.teamsById, state.locsById, name), file);
 }
 
 function fail(err) {

@@ -5,7 +5,7 @@
 
 export const SITE = {
   name: "Mountainside PAL",
-  program: "Youth Basketball",
+  program: "Travel Basketball",
   grades: "Grades 3–8",
 
   registrationUrl:

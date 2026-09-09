@@ -29,10 +29,11 @@
         <div>
           <h2>Schedule</h2>
           <div id="sched"><p class="empty">Loading…</p></div>
-          <p style="margin-top:14px">
+          <p style="margin-top:14px; display:flex; gap:8px; flex-wrap:wrap">
             <a class="btn btn--ghost btn--sm" id="fullSched" href="./schedule.html">
               Full schedule &amp; calendar
             </a>
+            <button class="btn btn--ghost btn--sm hidden" id="icsBtn">Add to calendar</button>
           </p>
         </div>
 
@@ -58,6 +59,7 @@
 import { isConfigured } from "./js/firebase-config.js";
 import { getFirebase } from "./js/firebase-config.js";
 import { onAuthChange } from "./js/auth.js";
+import { buildICS, downloadICS } from "./js/ics.js";
 import {
   GRADES, gradeLabel, teamIdForGrade, teamName, listTeams, listEvents, listLocations,
   eventTitle, groupByDay, mapsUrl, parseLocal, formatTime
@@ -110,6 +112,7 @@ async function hydrate() {
       : "Mountainside PAL Basketball";
 
     renderSchedule(events, teamsById, locsById);
+    wireExport(events, teamsById, locsById, label || gradeLabel(grade));
     renderCoaches(team, teams);
     renderAnnouncements();
     watchRoster();
@@ -117,6 +120,17 @@ async function hydrate() {
     console.error(err);
     $("sched").innerHTML = `<div class="msg msg--err">Couldn't load this team: ${esc(err.message)}</div>`;
   }
+}
+
+function wireExport(events, teamsById, locsById, name) {
+  const mine = events.filter(e => e.teamId === teamId || e.teamId === "all");
+  const btn = $("icsBtn");
+  if (!mine.length) return;
+  btn.classList.remove("hidden");
+  btn.onclick = () => downloadICS(
+    buildICS(mine, teamsById, locsById, `${name} — Mountainside PAL`),
+    `mountainside-pal-${teamId}.ics`
+  );
 }
 
 function renderSchedule(events, teamsById, locsById) {

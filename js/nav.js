@@ -37,6 +37,7 @@ function headerHTML() {
           Menu
         </button>
         <nav class="site-nav" id="siteNav">${links}</nav>
+        <a class="auth-chip" id="authChip" href="${BASE}login.html">Sign in</a>
       </div>
     </header>`;
 }
@@ -68,6 +69,9 @@ function footerHTML() {
           <div>
             <h4>Questions?</h4>
             ${contacts}
+            <p style="margin-top:14px">
+              <a href="${BASE}login.html">Sign in</a> to view team rosters.
+            </p>
           </div>
           <div>
             <h4>Follow Along</h4>
@@ -128,6 +132,28 @@ function init() {
 
   const bannerMount = document.getElementById("alert-banner");
   if (bannerMount) renderAlertBanner(bannerMount);
+
+  renderAuthChip();
+}
+
+/** Show the visitor's first name once signed in, so the chip isn't a dead end. */
+async function renderAuthChip() {
+  const chip = document.getElementById("authChip");
+  if (!chip) return;
+  try {
+    const { isConfigured } = await import("./firebase-config.js");
+    if (!isConfigured) { chip.classList.add("hidden"); return; }
+    const { onAuthChange } = await import("./auth.js");
+    onAuthChange((user) => {
+      if (!user) { chip.textContent = "Sign in"; chip.classList.remove("in"); return; }
+      const name = (user.displayName || user.email || "Account").split(/[\s@]/)[0];
+      chip.textContent = name;
+      chip.classList.add("in");
+      chip.title = "Signed in — view your account";
+    });
+  } catch (err) {
+    console.warn("[nav] auth chip unavailable:", err.message);
+  }
 }
 
 if (document.readyState === "loading") {

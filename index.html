@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Mountainside PAL Basketball</title>
-  <meta name="description" content="Mountainside PAL youth basketball for grades 3 through 8 in Mountainside, New Jersey. Registration, schedules, teams and announcements.">
+  <meta name="description" content="Mountainside PAL travel basketball for grades 3 through 8 in Mountainside, New Jersey. Registration, schedules, teams and announcements.">
   <link rel="stylesheet" href="./css/styles.css">
   <link rel="icon" href="./assets/favicon.png">
 </head>
@@ -20,7 +20,7 @@
       <span class="grades">Grades 3–8 &nbsp;·&nbsp; Mountainside, NJ</span>
       <h1>Mountainside PAL Basketball</h1>
       <p>
-        Competitive youth basketball run by the Mountainside Police Athletic League —
+        Competitive travel basketball run by the Mountainside Police Athletic League —
         teams by grade, selected by tryout, playing a full winter season.
       </p>
 
@@ -83,21 +83,33 @@
     </div>
   </section>
 
-  <section class="section section--alt">
+  <section class="section section--alt" id="upcomingSection">
     <div class="wrap">
-      <p class="eyebrow center">Announcements</p>
-      <h2 class="center">Latest News</h2>
-
-      <div id="announcements-mount" class="grid grid--3" style="margin-top:28px">
-        <!-- Phase 4: latest three announcements render here -->
-        <div class="card">
-          <h3>Announcements coming soon</h3>
-          <p style="margin-bottom:0">
-            Weather cancellations, schedule changes and registration reminders will be
-            posted here — and pushed to the top of every page when they're urgent.
-          </p>
+      <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:18px">
+        <div>
+          <p class="eyebrow" style="margin-bottom:2px">What's next</p>
+          <h2 style="margin:0">Upcoming</h2>
         </div>
+        <a class="btn btn--ghost btn--sm" href="./schedule.html" style="margin-left:auto">
+          Full schedule
+        </a>
       </div>
+      <div class="upnext" id="upnext"></div>
+    </div>
+  </section>
+
+  <section class="section" id="newsSection">
+    <div class="wrap">
+      <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;margin-bottom:18px">
+        <div>
+          <p class="eyebrow" style="margin-bottom:2px">Announcements</p>
+          <h2 style="margin:0">Latest News</h2>
+        </div>
+        <a class="btn btn--ghost btn--sm" href="./announcements.html" style="margin-left:auto">
+          All announcements
+        </a>
+      </div>
+      <div id="news"></div>
     </div>
   </section>
 
@@ -118,6 +130,98 @@
 <script type="module">
   import { applyContent } from "./js/content.js";
   applyContent();
+</script>
+<script type="module">
+import { isConfigured } from "./js/firebase-config.js";
+import { listEvents, listTeams, listLocations, eventTitle, mapsUrl,
+         parseLocal, formatTime } from "./js/events.js";
+import { listAnnouncements } from "./js/announcements.js";
+
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const $ = id => document.getElementById(id);
+
+// Both sections hide entirely rather than showing an empty shell — a home page
+// with a heading and nothing under it reads as broken.
+if (!isConfigured) {
+  $("upcomingSection").classList.add("hidden");
+  $("news").innerHTML = `<div class="card"><h3>Announcements coming soon</h3>
+    <p style="margin-bottom:0">Weather cancellations, schedule changes and registration
+    reminders will be posted here — and pushed to the top of every page when urgent.</p></div>`;
+} else {
+  loadUpcoming();
+  loadNews();
+}
+
+async function loadUpcoming() {
+  try {
+    const [events, teams, locs] = await Promise.all([listEvents(), listTeams(), listLocations()]);
+    const teamsById = Object.fromEntries(teams.map(t => [t.id, t]));
+    const locsById  = Object.fromEntries(locs.map(l => [l.id, l]));
+    const now = Date.now();
+
+    const next = events
+      .filter(ev => { const d = parseLocal(ev.startAt); return d && d.getTime() > now - 6 * 3600e3; })
+      .slice(0, 5);
+
+    if (!next.length) { $("upcomingSection").classList.add("hidden"); return; }
+
+    $("upnext").innerHTML = next.map(ev => {
+      const d = parseLocal(ev.startAt);
+      const loc = locsById[ev.locationId];
+      const url = mapsUrl(loc);
+      const cancelled = ev.status === "cancelled";
+      return `
+        <div class="row${cancelled ? " cancelled" : ""}">
+          <div class="d">
+            <div class="mo">${d.toLocaleDateString("en-US", { month: "short" })}</div>
+            <div class="dy">${d.getDate()}</div>
+          </div>
+          <div>
+            <div class="t">${esc(eventTitle(ev, teamsById))}</div>
+            <div class="m">${ev.allDay ? "All day" : esc(formatTime(ev.startAt))}${
+              loc ? " · " + (url
+                ? `<a href="${url}" target="_blank" rel="noopener">${esc(loc.name)}</a>`
+                : esc(loc.name)) : ""}</div>
+          </div>
+          <div class="side">
+            ${cancelled ? '<span class="badge badge--cancelled">Cancelled</span>' : ""}
+            <span class="badge badge--${esc(ev.type)}">${esc(ev.type)}</span>
+          </div>
+        </div>`;
+    }).join("");
+  } catch (err) {
+    console.warn("[home] upcoming unavailable:", err.message);
+    $("upcomingSection").classList.add("hidden");
+  }
+}
+
+async function loadNews() {
+  try {
+    const now = new Date();
+    const items = (await listAnnouncements())
+      .filter(a => !a.expiresAt?.toDate || a.expiresAt.toDate() > now)
+      .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0))
+      .slice(0, 3);
+
+    if (!items.length) { $("newsSection").classList.add("hidden"); return; }
+
+    $("news").innerHTML = items.map(a => `
+      <article class="ann${a.level === "urgent" ? " ann--urgent" : ""}">
+        <div class="head">
+          <h3>${esc(a.title)}</h3>
+          ${a.level === "urgent" ? '<span class="badge badge--cancelled">Urgent</span>' : ""}
+          <span class="date">${a.publishedAt?.toDate
+            ? a.publishedAt.toDate().toLocaleDateString("en-US", { month: "short", day: "numeric" })
+            : ""}</span>
+        </div>
+        <p>${esc(a.body).replace(/\n/g, "<br>")}</p>
+      </article>`).join("");
+  } catch (err) {
+    console.warn("[home] news unavailable:", err.message);
+    $("newsSection").classList.add("hidden");
+  }
+}
 </script>
 <script type="module" src="./js/nav.js"></script>
 </body>

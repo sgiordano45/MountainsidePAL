@@ -2,6 +2,7 @@
 
 **Stack:** static HTML/CSS/vanilla JS (ES modules, no build step) on GitHub Pages, Firebase (Firestore + Auth) as the backend.
 **Repo:** `sgiordano45/MountainsidePAL`, Pages served from `main` at root → `https://sgiordano45.github.io/MountainsidePAL/`
+**Program:** Mountainside PAL Travel Basketball.
 **Grades:** 3rd–8th, selected by tryout. A grade may field more than one team —
 team IDs are `grade-5` for a grade's first team and `grade-5-b` / `grade-5-girls` for extras.
 **Status:** Stephen is *building*, not running the program. This is a proposal to show PAL, so it needs to demo well with realistic seed data.
@@ -242,7 +243,14 @@ its TBD chip, so nothing silently shows a blank where a fee should be.
 
 **Phase 4 — Announcements & coaches.** Announcement CRUD, site-wide alert banner, `announcements.html`, `coaches.html`. This is the weather-cancellation path — want it before the first January snow.
 
-**Phase 5 — Nice to have.** `.ics` feed, team photos, scores/standings, PWA install, push notifications.
+**Phase 5 — Nice to have.** ✅ *Calendar export done.* Team photos, scores/standings,
+PWA install and push notifications remain.
+
+Calendar note: a GitHub Pages site is static and Cloud Functions need a paid Firebase plan,
+so there's no live subscription feed. Instead the browser generates an `.ics` from whatever
+the filters are showing and hands it over as a download. The tradeoff: an imported file is a
+snapshot, so a revised league schedule means re-importing. Per-event "add to Google Calendar"
+links exist for one-off changes.
 
 **Phase 6 — Handoff.** Seed one realistic demo season, write a one-page admin guide, walk PAL through it.
 
