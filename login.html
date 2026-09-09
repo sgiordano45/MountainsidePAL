@@ -64,33 +64,59 @@ if (!isConfigured) {
     const profile = await loadProfile(user);
     const admin = isAdmin(user, profile);
     const role  = profile?.role || "parent";
+    const isCoach = role === "coach";
+
+    // Role label, not the raw database value — "parent" is our word, not theirs.
+    const badge = admin ? ["game", "Administrator"]
+                : isCoach ? ["tryout", "Coach"]
+                : ["practice", "Signed in"];
+
     mount.innerHTML = `
       <div class="auth-gate">
-        <h1>Signed in</h1>
-        <p class="lede" style="margin:0 auto 1.2em">
+        <h1>You're signed in</h1>
+        <p class="lede" style="margin:0 auto 1em">
           ${user.displayName || user.email}
         </p>
-        <p style="margin:-8px 0 20px">
-          <span class="badge badge--${admin ? "game" : "practice"}">${
-            admin ? "Administrator" : role}</span>
+        <p style="margin:-4px 0 22px">
+          <span class="badge badge--${badge[0]}">${badge[1]}</span>
         </p>
-        <div class="card" style="text-align:left; margin-bottom:20px">
-          <div class="field" style="margin-bottom:0">
-            <label>Your Firebase UID</label>
-            <input type="text" id="uid" readonly value="${user.uid}"
-                   onclick="this.select()" style="font-family:ui-monospace,monospace">
-            <span class="hint">
-              ${admin
-                ? "You have full admin access."
-                : "Share this with an administrator if you need coach access."}
-            </span>
+
+        <p style="color:var(--ink-soft);margin-bottom:1.6em">
+          ${admin || isCoach
+            ? "You have editing access to the admin tools."
+            : "You can now view team rosters. Rosters are hidden from the public so players' names stay out of search results."}
+        </p>
+
+        <p style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+          ${admin || isCoach
+            ? '<a class="btn btn--primary" href="./admin/">Go to admin tools</a>' : ""}
+          <a class="btn ${admin || isCoach ? "btn--ghost" : "btn--primary"}" href="./teams.html">
+            View teams
+          </a>
+        </p>
+
+        ${admin ? `
+        <details style="margin-top:26px;text-align:left">
+          <summary style="cursor:pointer;color:var(--muted);font-size:.85rem">
+            Account details
+          </summary>
+          <div class="card" style="margin-top:10px">
+            <div class="field" style="margin-bottom:0">
+              <label>Your Firebase UID</label>
+              <input type="text" id="uid" readonly value="${user.uid}"
+                     onclick="this.select()" style="font-family:ui-monospace,monospace">
+              <span class="hint">
+                Only needed for the bootstrap admin list in
+                <code>js/auth.js</code> and <code>firestore.rules</code>.
+                Everyone else gets their role from the People page.
+              </span>
+            </div>
           </div>
-        </div>
-        <p style="color:var(--muted);font-size:.9rem">
-          You can view team rosters while signed in.
+        </details>` : ""}
+
+        <p style="margin-top:26px">
+          <button class="btn btn--ghost btn--sm" id="out">Sign out</button>
         </p>
-        ${admin || role === "coach" ? '<p><a class="btn btn--primary" href="./admin/">Go to admin tools</a></p>' : ""}
-        <p><button class="btn btn--ghost" id="out">Sign out</button></p>
       </div>`;
     document.getElementById("out").onclick = () => signOutUser();
   });
