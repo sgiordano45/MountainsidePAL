@@ -3,23 +3,32 @@
 import { signOutUser } from "./auth.js";
 
 export const ADMIN_NAV = [
-  { href: "index.html",  label: "Dashboard" },
-  { href: "events.html", label: "Schedule Editor" },
-  { href: "import.html", label: "Import Schedule" }
+  { href: "index.html",         label: "Dashboard" },
+  { href: "events.html",        label: "Schedule" },
+  { href: "import.html",        label: "Import" },
+  { href: "announcements.html", label: "Announcements" },
+  { href: "teams.html",         label: "Teams & Rosters" },
+  { href: "users.html",         label: "People", adminOnly: true }
 ];
 
 export const esc = s => String(s ?? "").replace(/[&<>"]/g, c =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-export function renderAdminBar(mount, user, currentHref) {
-  const links = ADMIN_NAV.map(n =>
-    `<a href="./${n.href}"${n.href === currentHref ? ' aria-current="page"' : ""}>${n.label}</a>`
-  ).join("");
+export function renderAdminBar(mount, user, currentHref, profile) {
+  const admin = !!profile?.isAdmin;
+  const links = ADMIN_NAV
+    .filter(n => admin || !n.adminOnly)
+    .map(n => `<a href="./${n.href}"${n.href === currentHref ? ' aria-current="page"' : ""}>${n.label}</a>`)
+    .join("");
+
+  const role = profile?.role
+    ? ` · ${profile.role === "admin" ? "Administrator" : profile.role === "coach" ? "Coach" : profile.role}`
+    : "";
 
   mount.innerHTML = `
     <div class="admin-bar">
       <div class="wrap">
-        <span class="who">Signed in as ${esc(user.displayName || user.email)}</span>
+        <span class="who">${esc(user.displayName || user.email)}${esc(role)}</span>
         ${links}
         <a href="../index.html">View site</a>
         <button class="btn btn--ghost btn--sm" id="adminOut">Sign out</button>

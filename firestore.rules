@@ -1,52 +1,119 @@
 rules_version = '2';
 
-// Mountainside PAL Basketball — Firestore security rules
+// Mountainside PAL Basketball — Firestore security rules (Phase 3)
 //
-// PHASE 2 (current): a single hardcoded admin UID. Everything is public to read
-//   except nothing yet; only the admin can write.
-// PHASE 3: replace isAdmin()/isCoachOf() with lookups against users/{uid},
-//   and tighten the roster subcollection to signed-in readers.
+// Roles live in users/{uid}.role — 'admin', 'coach' or 'parent'.
+// A signed-in visitor self-registers as 'parent' on first sign-in; they can never
+// set their own role or teamIds. Only an admin changes those, from admin/users.html.
 //
-// Get your UID by signing in at login.html — it prints it on screen.
-// Keep this list in sync with ADMIN_UIDS in js/auth.js.
+// BOOTSTRAP_ADMINS below are admins unconditionally, so the first role can be
+// granted at all. Keep this list identical to BOOTSTRAP_ADMINS in js/auth.js.
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function isAdmin() {
-      return request.auth != null
-        && request.auth.uid in [
-             'REPLACE_WITH_YOUR_UID'
-           ];
-    }
+    /* ---------- helpers ---------- */
 
     function signedIn() {
       return request.auth != null;
     }
 
-    // ---- public read, admin write ----
+    function bootstrapAdmin() {
+      return signedIn() && request.auth.uid in [
+        'zNT9XYRybMQEabbxXFShRIBSZHy2'
+      ];
+    }
+
+    function profile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function hasProfile() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function isAdmin() {
+      return bootstrapAdmin() || (hasProfile() && profile().role == 'admin');
+    }
+
+    function isCoach() {
+      return hasProfile() && profile().role == 'coach';
+    }
+
+    function isCoachOf(teamId) {
+      return isCoach() && teamId in profile().teamIds;
+    }
+
+    // Coaches may write content scoped to their own team; admins, anything.
+    function canWriteTeamContent(teamId) {
+      return isAdmin() || isCoachOf(teamId);
+    }
+
+    /* ---------- public content, admin-managed ---------- */
+
     match /config/{doc}    { allow read: if true; allow write: if isAdmin(); }
     match /seasons/{doc}   { allow read: if true; allow write: if isAdmin(); }
     match /locations/{doc} { allow read: if true; allow write: if isAdmin(); }
     match /coaches/{doc}   { allow read: if true; allow write: if isAdmin(); }
-    match /events/{doc}    { allow read: if true; allow write: if isAdmin(); }
-    match /announcements/{doc} { allow read: if true; allow write: if isAdmin(); }
 
-    // ---- teams: public doc, roster needs a sign-in (Phase 3 hardens this) ----
+    /* ---------- teams & rosters ---------- */
+
     match /teams/{teamId} {
       allow read: if true;
-      allow write: if isAdmin();
+      // Coaches may edit their own team's doc, but never reassign coaches:
+      // coachUids changes are admin-only, so a coach can't add themselves elsewhere.
+      allow update: if isAdmin()
+        || (isCoachOf(teamId)
+            && request.resource.data.coachUids == resource.data.coachUids);
+      allow create, delete: if isAdmin();
 
       match /roster/{playerId} {
         allow read:  if signedIn();
-        allow write: if isAdmin();
+        allow write: if canWriteTeamContent(teamId);
       }
     }
 
-    // ---- users: created in Phase 3; roles are never self-assigned ----
+    /* ---------- events ---------- */
+
+    match /events/{eventId} {
+      allow read: if true;
+      allow create: if canWriteTeamContent(request.resource.data.teamId);
+      // Both the old and new team must be writable, so a coach can't move an
+      // event onto another team or claim one from it.
+      allow update: if canWriteTeamContent(resource.data.teamId)
+                    && canWriteTeamContent(request.resource.data.teamId);
+      allow delete: if canWriteTeamContent(resource.data.teamId);
+    }
+
+    /* ---------- announcements ---------- */
+
+    match /announcements/{id} {
+      allow read: if true;
+      allow create: if canWriteTeamContent(request.resource.data.teamId);
+      allow update: if canWriteTeamContent(resource.data.teamId)
+                    && canWriteTeamContent(request.resource.data.teamId);
+      allow delete: if canWriteTeamContent(resource.data.teamId);
+    }
+
+    /* ---------- users & roles ---------- */
+
     match /users/{uid} {
-      allow read:  if isAdmin() || (signedIn() && request.auth.uid == uid);
-      allow write: if isAdmin();
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == uid);
+
+      // Self-registration only, and only as a parent with no team scope.
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.role == 'parent'
+        && request.resource.data.teamIds.size() == 0;
+
+      // A user may update their own profile but not their own privileges.
+      allow update: if isAdmin()
+        || (signedIn() && request.auth.uid == uid
+            && request.resource.data.role == resource.data.role
+            && request.resource.data.teamIds == resource.data.teamIds);
+
+      allow delete: if isAdmin();
     }
 
     match /{document=**} { allow read, write: if false; }

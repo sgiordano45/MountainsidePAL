@@ -78,7 +78,7 @@
 <div id="site-footer"></div>
 
 <script type="module">
-import { requireAdmin } from "../js/auth.js";
+import { requireAdmin, isAdmin } from "../js/auth.js";
 import { renderAdminBar, say, esc } from "../js/admin-ui.js";
 import { listTeams, listEvents, listLocations, seedSeason, saveLocation, mapsUrl }
   from "../js/events.js";
@@ -86,8 +86,9 @@ import { listTeams, listEvents, listLocations, seedSeason, saveLocation, mapsUrl
 const gate = document.getElementById("gate");
 const app  = document.getElementById("app");
 
-requireAdmin(gate, async (user) => {
-  renderAdminBar(document.getElementById("adminbar"), user, "index.html");
+requireAdmin(gate, async (user, profile) => {
+  renderAdminBar(document.getElementById("adminbar"), user, "index.html",
+    { ...profile, isAdmin: isAdmin(user, profile) });
   app.classList.remove("hidden");
   await refresh();
 

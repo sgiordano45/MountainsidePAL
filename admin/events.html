@@ -111,7 +111,7 @@
 <div id="site-footer"></div>
 
 <script type="module">
-import { requireAdmin } from "../js/auth.js";
+import { requireRole, isAdmin, editableTeams } from "../js/auth.js";
 import { renderAdminBar, say, esc, dateInputValue, timeInputValue, localDateFrom }
   from "../js/admin-ui.js";
 import {
@@ -119,14 +119,16 @@ import {
   bulkCreateEvents, EVENT_TYPES, eventTitle, groupByDay, parseLocal, formatTime
 } from "../js/events.js";
 
-let USER = null, events = [], teams = [], locs = [], teamsById = {}, locsById = {};
+let USER = null, PROFILE = null, ADMIN = false, ALLOWED = null;   // ALLOWED null = every team
+let events = [], teams = [], locs = [], teamsById = {}, locsById = {};
 let editingId = null;
 
 const $ = id => document.getElementById(id);
 
-requireAdmin($("gate"), async (user) => {
-  USER = user;
-  renderAdminBar($("adminbar"), user, "events.html");
+requireRole($("gate"), ["admin", "coach"], async ({ user, profile }) => {
+  USER = user; PROFILE = profile; ADMIN = isAdmin(user, profile);
+  ALLOWED = editableTeams(user, profile);
+  renderAdminBar($("adminbar"), user, "events.html", { ...profile, isAdmin: ADMIN });
   $("app").classList.remove("hidden");
 
   for (const t of EVENT_TYPES) {
@@ -159,11 +161,20 @@ async function load() {
   const fTeam = $("fTeam"), qTeam = $("qTeam"), fLoc = $("fLoc");
   fTeam.innerHTML = ""; fLoc.length = 1;
   qTeam.length = 1;
-  for (const t of teams) { fTeam.add(new Option(t.name, t.id)); qTeam.add(new Option(t.name, t.id)); }
-  fTeam.add(new Option("All teams (program-wide)", "all"));
-  qTeam.add(new Option("Program-wide", "all"));
+
+  // A coach only ever sees the teams they're assigned to.
+  const mine = ALLOWED ? teams.filter(t => ALLOWED.includes(t.id)) : teams;
+  for (const t of mine) { fTeam.add(new Option(t.name, t.id)); qTeam.add(new Option(t.name, t.id)); }
+  if (ADMIN) {
+    fTeam.add(new Option("All teams (program-wide)", "all"));
+    qTeam.add(new Option("Program-wide", "all"));
+  }
   for (const l of locs) fLoc.add(new Option(l.name, l.id));
 
+  if (ALLOWED && !mine.length) {
+    say($("msg"), "You aren't assigned to a team yet. Ask an administrator to assign you.", "warn");
+    $("saveBtn").disabled = true;
+  }
   if (!teams.length) {
     say($("msg"), 'No teams yet — run <strong>Initialise season data</strong> on the ' +
       '<a href="./index.html">dashboard</a> first.', "warn");
@@ -273,6 +284,8 @@ function filtered() {
   const now = Date.now();
   const team = $("qTeam").value, type = $("qType").value, when = $("qWhen").value;
   return events.filter(ev => {
+    // coaches only see their own teams in the editor
+    if (ALLOWED && !ALLOWED.includes(ev.teamId)) return false;
     if (team && ev.teamId !== team) return false;
     if (type && ev.type !== type) return false;
     const d = parseLocal(ev.startAt);

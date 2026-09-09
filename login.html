@@ -22,7 +22,7 @@
 
 <script type="module">
 import { isConfigured } from "./js/firebase-config.js";
-import { onAuthChange, signInWithGoogle, signOutUser, isAdmin, adminListReady,
+import { onAuthChange, signInWithGoogle, signOutUser, isAdmin, loadProfile,
          setupNoticeHTML, explainAuthError, completeRedirectSignIn } from "./js/auth.js";
 
 const mount = document.getElementById("mount");
@@ -37,7 +37,7 @@ function showError(err) {
 if (!isConfigured) {
   mount.innerHTML = setupNoticeHTML();
 } else {
-  onAuthChange(user => {
+  onAuthChange(async (user) => {
     if (!user) {
       mount.innerHTML = `
         <div class="auth-gate">
@@ -61,12 +61,18 @@ if (!isConfigured) {
       return;
     }
 
-    const admin = isAdmin(user);
+    const profile = await loadProfile(user);
+    const admin = isAdmin(user, profile);
+    const role  = profile?.role || "parent";
     mount.innerHTML = `
       <div class="auth-gate">
         <h1>Signed in</h1>
         <p class="lede" style="margin:0 auto 1.2em">
           ${user.displayName || user.email}
+        </p>
+        <p style="margin:-8px 0 20px">
+          <span class="badge badge--${admin ? "game" : "practice"}">${
+            admin ? "Administrator" : role}</span>
         </p>
         <div class="card" style="text-align:left; margin-bottom:20px">
           <div class="field" style="margin-bottom:0">
@@ -75,16 +81,15 @@ if (!isConfigured) {
                    onclick="this.select()" style="font-family:ui-monospace,monospace">
             <span class="hint">
               ${admin
-                ? "This account is on the admin list."
-                : "Paste this into ADMIN_UIDS in js/auth.js and into firestore.rules to grant yourself admin."}
+                ? "You have full admin access."
+                : "Share this with an administrator if you need coach access."}
             </span>
           </div>
         </div>
-        ${!adminListReady ? `<div class="msg msg--warn" style="text-align:left">
-            <strong>No admin configured yet.</strong> Copy the UID above into
-            <code>js/auth.js</code> and <code>firestore.rules</code>, then publish the rules.
-          </div>` : ""}
-        ${admin ? '<p><a class="btn btn--primary" href="./admin/">Go to admin</a></p>' : ""}
+        <p style="color:var(--muted);font-size:.9rem">
+          You can view team rosters while signed in.
+        </p>
+        ${admin || role === "coach" ? '<p><a class="btn btn--primary" href="./admin/">Go to admin tools</a></p>' : ""}
         <p><button class="btn btn--ghost" id="out">Sign out</button></p>
       </div>`;
     document.getElementById("out").onclick = () => signOutUser();

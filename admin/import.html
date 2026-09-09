@@ -100,7 +100,7 @@
 <div id="site-footer"></div>
 
 <script type="module">
-import { requireAdmin } from "../js/auth.js";
+import { requireAdmin, isAdmin } from "../js/auth.js";
 import { renderAdminBar, say, esc } from "../js/admin-ui.js";
 import {
   listTeams, listLocations, listEvents, bulkCreateEvents, saveLocation,
@@ -120,9 +120,10 @@ const FIELDS = [
 let USER = null, teams = [], locs = [], existing = [];
 let rows = [], header = [], mapping = {}, parsed = [];
 
-requireAdmin($("gate"), async (user) => {
+requireAdmin($("gate"), async (user, profile) => {
   USER = user;
-  renderAdminBar($("adminbar"), user, "import.html");
+  renderAdminBar($("adminbar"), user, "import.html",
+    { ...profile, isAdmin: isAdmin(user, profile) });
   $("app").classList.remove("hidden");
 
   for (const t of EVENT_TYPES) $("iType").add(new Option(t.label, t.id));

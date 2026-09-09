@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en" data-page="admin" data-base="../">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Announcements · Mountainside PAL Admin</title>
+  <meta name="robots" content="noindex">
+  <link rel="stylesheet" href="../css/styles.css">
+  <link rel="icon" href="../assets/favicon.png">
+</head>
+<body>
+
+<div id="site-header"></div>
+<div id="adminbar"></div>
+
+<main>
+  <div class="wrap">
+    <div id="gate"></div>
+    <div id="app" class="hidden">
+
+      <!-- alert banner -->
+      <section class="section" style="padding-bottom:14px">
+        <h1>Announcements</h1>
+        <div id="msg"></div>
+
+        <div class="card card--accent" id="bannerCard">
+          <h3>Site-wide Alert Banner</h3>
+          <p style="color:var(--muted);font-size:.9rem">
+            Appears across the top of every page. Use it for the thing everyone needs to
+            know right now — a snow cancellation, a venue change.
+          </p>
+          <label class="check" style="margin-bottom:12px">
+            <input type="checkbox" id="bActive"> Banner is showing
+          </label>
+          <div class="form-grid">
+            <div class="field" style="grid-column:1/-1">
+              <label for="bText">Message</label>
+              <input type="text" id="bText" placeholder="All games cancelled today — snow.">
+            </div>
+            <div class="field">
+              <label for="bLevel">Style</label>
+              <select id="bLevel">
+                <option value="urgent">Urgent (red)</option>
+                <option value="normal">Informational (green)</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="bLink">Link <span class="hint">optional</span></label>
+              <input type="text" id="bLink" placeholder="announcements.html">
+            </div>
+            <div class="field">
+              <label for="bExpires">Auto-hide after <span class="hint">optional</span></label>
+              <input type="date" id="bExpires">
+            </div>
+          </div>
+          <button class="btn btn--primary" id="bSave">Save banner</button>
+          <div id="bMsg"></div>
+        </div>
+      </section>
+
+      <!-- composer -->
+      <section class="section" style="padding:14px 0">
+        <h2 id="formTitle">Post an Announcement</h2>
+        <div class="card">
+          <div class="form-grid">
+            <div class="field" style="grid-column:1/-1">
+              <label for="aTitle">Title</label>
+              <input type="text" id="aTitle" placeholder="Saturday's games moved to Deerfield">
+            </div>
+          </div>
+          <div class="field">
+            <label for="aBody">Message</label>
+            <textarea id="aBody" style="font-family:inherit;font-size:.95rem"
+              placeholder="Line breaks are preserved."></textarea>
+          </div>
+          <div class="form-grid">
+            <div class="field">
+              <label for="aTeam">Audience</label>
+              <select id="aTeam"></select>
+            </div>
+            <div class="field">
+              <label for="aLevel">Priority</label>
+              <select id="aLevel">
+                <option value="normal">Normal</option>
+                <option value="urgent">Urgent</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="aExpires">Expires <span class="hint">optional</span></label>
+              <input type="date" id="aExpires">
+            </div>
+          </div>
+          <label class="check" style="margin-bottom:14px">
+            <input type="checkbox" id="aPinned"> Pin to the top
+          </label>
+          <div style="display:flex; gap:10px; flex-wrap:wrap">
+            <button class="btn btn--primary" id="aSave">Post announcement</button>
+            <button class="btn btn--ghost hidden" id="aCancel">Cancel edit</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" style="padding-top:14px">
+        <h2>Posted</h2>
+        <div id="list"><p class="empty">Loading…</p></div>
+      </section>
+
+    </div>
+  </div>
+</main>
+
+<div id="site-footer"></div>
+
+<script type="module">
+import { requireRole, isAdmin, editableTeams } from "../js/auth.js";
+import { renderAdminBar, say, esc, dateInputValue, localDateFrom } from "../js/admin-ui.js";
+import { listTeams, gradeLabel } from "../js/events.js";
+import {
+  listAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement,
+  getSiteConfig, setAlertBanner
+} from "../js/announcements.js";
+
+const $ = id => document.getElementById(id);
+let USER = null, PROFILE = null, ADMIN = false;
+let items = [], teams = [], editingId = null;
+
+requireRole($("gate"), ["admin", "coach"], async ({ user, profile }) => {
+  USER = user; PROFILE = profile; ADMIN = isAdmin(user, profile);
+  renderAdminBar($("adminbar"), user, "announcements.html", { ...profile, isAdmin: ADMIN });
+  $("app").classList.remove("hidden");
+
+  // Only admins control the site-wide banner.
+  if (!ADMIN) $("bannerCard").classList.add("hidden");
+
+  teams = await listTeams();
+  const allowed = editableTeams(user, profile);          // null = all
+  const mine = allowed ? teams.filter(t => allowed.includes(t.id)) : teams;
+
+  const sel = $("aTeam");
+  if (ADMIN) sel.add(new Option("Everyone (program-wide)", "all"));
+  for (const t of mine) sel.add(new Option(t.name || gradeLabel(t.grade), t.id));
+  if (!sel.options.length) {
+    say($("msg"), "You aren't assigned to a team yet, so there's nothing to post to. " +
+      "Ask an administrator to assign you.", "warn");
+    $("aSave").disabled = true;
+  }
+
+  if (ADMIN) await loadBanner();
+  await loadList();
+
+  $("aSave").onclick   = save;
+  $("aCancel").onclick = clearForm;
+  if (ADMIN) $("bSave").onclick = saveBanner;
+});
+
+/* ---- banner ---- */
+
+async function loadBanner() {
+  try {
+    const cfg = await getSiteConfig();
+    const b = cfg?.alertBanner || {};
+    $("bActive").checked = !!b.active;
+    $("bText").value  = b.text || "";
+    $("bLink").value  = b.link || "";
+    $("bLevel").value = b.level === "normal" ? "normal" : "urgent";
+    $("bExpires").value = b.expiresAt?.toDate ? dateInputValue(b.expiresAt.toDate()) : "";
+  } catch (err) {
+    say($("bMsg"), `Couldn't load the banner: ${esc(err.message)}`, "err");
+  }
+}
+
+async function saveBanner() {
+  try {
+    if ($("bActive").checked && !$("bText").value.trim())
+      throw new Error("A visible banner needs a message.");
+    await setAlertBanner({
+      active: $("bActive").checked,
+      text: $("bText").value.trim(),
+      link: $("bLink").value.trim(),
+      level: $("bLevel").value,
+      expires: $("bExpires").value ? localDateFrom($("bExpires").value, "23:59") : null
+    });
+    say($("bMsg"), $("bActive").checked
+      ? "Banner is live on every page."
+      : "Banner hidden.");
+  } catch (err) {
+    say($("bMsg"), `Failed: ${esc(err.message)}`, "err");
+  }
+}
+
+/* ---- announcements ---- */
+
+async function save() {
+  const btn = $("aSave");
+  btn.disabled = true;
+  try {
+    const title = $("aTitle").value.trim();
+    const body  = $("aBody").value.trim();
+    if (!title) throw new Error("A title is required.");
+    if (!body)  throw new Error("A message is required.");
+
+    const data = {
+      title, body,
+      teamId: $("aTeam").value,
+      level: $("aLevel").value,
+      pinned: $("aPinned").checked,
+      expires: $("aExpires").value ? localDateFrom($("aExpires").value, "23:59") : null
+    };
+
+    if (editingId) { await updateAnnouncement(editingId, data); say($("msg"), "Announcement updated."); }
+    else           { await createAnnouncement(data, USER);      say($("msg"), "Announcement posted."); }
+
+    clearForm();
+    await loadList();
+  } catch (err) {
+    say($("msg"), `Failed: ${esc(err.message)}`, "err");
+  }
+  btn.disabled = false;
+}
+
+function clearForm() {
+  editingId = null;
+  $("formTitle").textContent = "Post an Announcement";
+  $("aSave").textContent = "Post announcement";
+  $("aCancel").classList.add("hidden");
+  $("aTitle").value = ""; $("aBody").value = "";
+  $("aExpires").value = ""; $("aPinned").checked = false;
+  $("aLevel").value = "normal";
+}
+
+function loadIntoForm(a) {
+  editingId = a.id;
+  $("formTitle").textContent = "Edit Announcement";
+  $("aSave").textContent = "Save changes";
+  $("aCancel").classList.remove("hidden");
+  $("aTitle").value = a.title || "";
+  $("aBody").value  = a.body || "";
+  $("aLevel").value = a.level === "urgent" ? "urgent" : "normal";
+  $("aPinned").checked = !!a.pinned;
+  $("aExpires").value = a.expiresAt?.toDate ? dateInputValue(a.expiresAt.toDate()) : "";
+  if ([...$("aTeam").options].some(o => o.value === a.teamId)) $("aTeam").value = a.teamId;
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+async function loadList() {
+  try {
+    items = await listAnnouncements();
+  } catch (err) {
+    $("list").innerHTML = `<div class="msg msg--err">Couldn't load: ${esc(err.message)}</div>`;
+    return;
+  }
+  if (!items.length) { $("list").innerHTML = `<p class="empty">Nothing posted yet.</p>`; return; }
+
+  const allowed = editableTeams(USER, PROFILE);
+  const canEdit = a => allowed === null || allowed.includes(a.teamId);
+  const teamName = id => id === "all" ? "Everyone"
+    : (teams.find(t => t.id === id)?.name || id);
+  const now = new Date();
+
+  $("list").innerHTML = items.map(a => {
+    const expired = a.expiresAt?.toDate && a.expiresAt.toDate() < now;
+    return `
+    <article class="ann${a.level === "urgent" ? " ann--urgent" : ""}"
+             style="${expired ? "opacity:.55" : ""}">
+      <div class="head">
+        <h3>${esc(a.title)}</h3>
+        ${a.level === "urgent" ? '<span class="badge badge--cancelled">Urgent</span>' : ""}
+        ${a.pinned ? '<span class="badge">Pinned</span>' : ""}
+        ${expired ? '<span class="badge">Expired</span>' : ""}
+        <span class="date">${esc(teamName(a.teamId))}${a.publishedAt?.toDate
+          ? " · " + a.publishedAt.toDate().toLocaleDateString("en-US",
+              { month: "short", day: "numeric", year: "numeric" })
+          : ""}</span>
+      </div>
+      <p>${esc(a.body).replace(/\n/g, "<br>")}</p>
+      ${canEdit(a) ? `
+        <div style="display:flex;gap:8px;margin-top:12px">
+          <button class="btn btn--ghost btn--sm" data-act="edit" data-id="${a.id}">Edit</button>
+          <button class="btn btn--danger btn--sm" data-act="del" data-id="${a.id}">Delete</button>
+        </div>` : ""}
+    </article>`;
+  }).join("");
+
+  $("list").querySelectorAll("button[data-act]").forEach(b => {
+    b.onclick = async () => {
+      const a = items.find(x => x.id === b.dataset.id);
+      if (!a) return;
+      if (b.dataset.act === "edit") return loadIntoForm(a);
+      if (!confirm(`Delete "${a.title}"?`)) return;
+      try { await deleteAnnouncement(a.id); say($("msg"), "Deleted."); await loadList(); }
+      catch (err) { say($("msg"), `Failed: ${esc(err.message)}`, "err"); }
+    };
+  });
+}
+</script>
+<script type="module" src="../js/nav.js"></script>
+</body>
+</html>

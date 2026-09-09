@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="en" data-page="admin" data-base="../">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Teams &amp; Rosters · Mountainside PAL Admin</title>
+  <meta name="robots" content="noindex">
+  <link rel="stylesheet" href="../css/styles.css">
+  <link rel="icon" href="../assets/favicon.png">
+</head>
+<body>
+
+<div id="site-header"></div>
+<div id="adminbar"></div>
+
+<main>
+  <div class="wrap">
+    <div id="gate"></div>
+    <div id="app" class="hidden">
+
+      <section class="section" style="padding-bottom:14px">
+        <h1>Teams &amp; Rosters</h1>
+        <div id="msg"></div>
+
+        <div class="toolbar">
+          <div class="field">
+            <label for="tTeam">Team</label>
+            <select id="tTeam"></select>
+          </div>
+          <div class="spacer"></div>
+          <div class="field" style="flex:0 0 auto">
+            <label>&nbsp;</label>
+            <a class="btn btn--ghost btn--sm" id="viewTeam" href="../team.html">View public page</a>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" style="padding-top:0">
+        <div class="grid grid--2" style="align-items:start">
+
+          <!-- roster -->
+          <div>
+            <h2>Roster <span id="rosterCount" style="color:var(--muted);font-weight:400"></span></h2>
+            <div class="card">
+              <div class="form-grid">
+                <div class="field" style="flex:0 0 90px">
+                  <label for="pNum">Number</label>
+                  <input type="number" id="pNum" min="0" max="99" placeholder="12">
+                </div>
+                <div class="field">
+                  <label for="pFirst">First name</label>
+                  <input type="text" id="pFirst" placeholder="Jake">
+                </div>
+                <div class="field">
+                  <label for="pLast">Last name</label>
+                  <input type="text" id="pLast" placeholder="Miller">
+                </div>
+              </div>
+              <div style="display:flex;gap:10px;flex-wrap:wrap">
+                <button class="btn btn--primary btn--sm" id="pSave">Add player</button>
+                <button class="btn btn--ghost btn--sm hidden" id="pCancel">Cancel edit</button>
+              </div>
+              <p class="hint" style="margin:10px 0 0">
+                Public pages show first name and last initial only. Full surnames stay in
+                the database for your reference.
+              </p>
+            </div>
+
+            <div id="rosterList" style="margin-top:16px"></div>
+
+            <details style="margin-top:18px">
+              <summary style="cursor:pointer;font-weight:700">Paste a whole roster</summary>
+              <div class="card" style="margin-top:10px">
+                <div class="field">
+                  <label for="pPaste">One player per line</label>
+                  <textarea id="pPaste" style="min-height:120px"
+                    placeholder="12 Jake Miller&#10;5, Sam Rodriguez&#10;Alex Chen"></textarea>
+                  <span class="hint">A leading number is read as the jersey number.</span>
+                </div>
+                <button class="btn btn--ghost btn--sm" id="pImport">Add these players</button>
+              </div>
+            </details>
+          </div>
+
+          <!-- coaches -->
+          <div>
+            <h2>Coaches</h2>
+            <div class="card" id="coachCard">
+              <div id="coachList"></div>
+              <div id="coachAssign"></div>
+            </div>
+
+            <div class="notice" style="margin-top:16px">
+              <p style="margin:0;font-size:.9rem">
+                Coaches are promoted on the <a href="./users.html">People</a> page. Assigning
+                a coach to a team there gives them rights to that team's roster, events and
+                announcements — and nothing else.
+              </p>
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+    </div>
+  </div>
+</main>
+
+<div id="site-footer"></div>
+
+<script type="module">
+import { requireRole, isAdmin, editableTeams } from "../js/auth.js";
+import { renderAdminBar, say, esc } from "../js/admin-ui.js";
+import { listTeams, gradeLabel } from "../js/events.js";
+import {
+  listRoster, savePlayer, deletePlayer, parseRosterPaste,
+  listCoaches, listUsers, setTeamCoaches, saveCoach
+} from "../js/people.js";
+
+const $ = id => document.getElementById(id);
+let USER = null, PROFILE = null, ADMIN = false;
+let teams = [], teamId = null, roster = [], coaches = {}, users = [];
+let editingPlayer = null;
+
+requireRole($("gate"), ["admin", "coach"], async ({ user, profile }) => {
+  USER = user; PROFILE = profile; ADMIN = isAdmin(user, profile);
+  renderAdminBar($("adminbar"), user, "teams.html", { ...profile, isAdmin: ADMIN });
+  $("app").classList.remove("hidden");
+
+  teams = await listTeams();
+  const allowed = editableTeams(user, profile);
+  const mine = allowed ? teams.filter(t => allowed.includes(t.id)) : teams;
+
+  if (!mine.length) {
+    say($("msg"), "You aren't assigned to a team yet. Ask an administrator to assign you.", "warn");
+    return;
+  }
+
+  for (const t of mine) $("tTeam").add(new Option(t.name || gradeLabel(t.grade), t.id));
+  teamId = mine[0].id;
+
+  coaches = await listCoaches().catch(() => ({}));
+  if (ADMIN) users = await listUsers().catch(() => []);
+
+  $("tTeam").onchange = async () => { teamId = $("tTeam").value; await loadTeam(); };
+  $("pSave").onclick   = savePlayerFromForm;
+  $("pCancel").onclick = clearPlayerForm;
+  $("pImport").onclick = importRoster;
+
+  await loadTeam();
+});
+
+async function loadTeam() {
+  $("viewTeam").href = `../team.html?id=${teamId}`;
+  clearPlayerForm();
+  await Promise.all([loadRoster(), renderCoaches()]);
+}
+
+/* ---- roster ---- */
+
+async function loadRoster() {
+  try { roster = await listRoster(teamId); }
+  catch (err) {
+    $("rosterList").innerHTML = `<div class="msg msg--err">Couldn't load: ${esc(err.message)}</div>`;
+    return;
+  }
+
+  $("rosterCount").textContent = roster.length ? `· ${roster.length} players` : "";
+
+  $("rosterList").innerHTML = roster.length
+    ? `<ul class="roster">${roster.map(p => `
+        <li>
+          <span class="num">${p.jersey ?? "–"}</span>
+          <span style="flex:1">${esc(p.firstName)} ${esc(p.lastName)}</span>
+          <button class="btn btn--ghost btn--sm" data-edit="${p.id}">Edit</button>
+          <button class="btn btn--danger btn--sm" data-del="${p.id}">Remove</button>
+        </li>`).join("")}</ul>`
+    : `<p class="empty" style="padding:26px">No players yet.</p>`;
+
+  $("rosterList").querySelectorAll("[data-edit]").forEach(b => {
+    b.onclick = () => {
+      const p = roster.find(x => x.id === b.dataset.edit);
+      editingPlayer = p.id;
+      $("pNum").value = p.jersey ?? "";
+      $("pFirst").value = p.firstName || "";
+      $("pLast").value = p.lastName || "";
+      $("pSave").textContent = "Save player";
+      $("pCancel").classList.remove("hidden");
+    };
+  });
+  $("rosterList").querySelectorAll("[data-del]").forEach(b => {
+    b.onclick = async () => {
+      const p = roster.find(x => x.id === b.dataset.del);
+      if (!confirm(`Remove ${p.firstName} ${p.lastName} from this roster?`)) return;
+      try { await deletePlayer(teamId, p.id); say($("msg"), "Player removed."); await loadRoster(); }
+      catch (err) { say($("msg"), `Failed: ${esc(err.message)}`, "err"); }
+    };
+  });
+}
+
+async function savePlayerFromForm() {
+  try {
+    const first = $("pFirst").value.trim();
+    if (!first) throw new Error("A first name is required.");
+    await savePlayer(teamId, editingPlayer, {
+      firstName: first,
+      lastName: $("pLast").value.trim(),
+      jersey: $("pNum").value
+    });
+    say($("msg"), editingPlayer ? "Player updated." : "Player added.");
+    clearPlayerForm();
+    await loadRoster();
+  } catch (err) {
+    say($("msg"), `Failed: ${esc(err.message)}`, "err");
+  }
+}
+
+function clearPlayerForm() {
+  editingPlayer = null;
+  $("pNum").value = ""; $("pFirst").value = ""; $("pLast").value = "";
+  $("pSave").textContent = "Add player";
+  $("pCancel").classList.add("hidden");
+}
+
+async function importRoster() {
+  const players = parseRosterPaste($("pPaste").value);
+  if (!players.length) return say($("msg"), "Nothing to add — one player per line.", "err");
+  if (!confirm(`Add ${players.length} player${players.length === 1 ? "" : "s"} to this roster?`)) return;
+  try {
+    for (const p of players) await savePlayer(teamId, null, p);
+    $("pPaste").value = "";
+    say($("msg"), `Added ${players.length} players.`);
+    await loadRoster();
+  } catch (err) {
+    say($("msg"), `Failed partway through: ${esc(err.message)}`, "err");
+    await loadRoster();
+  }
+}
+
+/* ---- coaches ---- */
+
+async function renderCoaches() {
+  const team = teams.find(t => t.id === teamId);
+  const uids = team?.coachUids || [];
+  const assigned = uids.map(u => coaches[u]).filter(Boolean);
+
+  $("coachList").innerHTML = assigned.length
+    ? assigned.map(c => `
+        <div class="coachcard" style="margin-bottom:14px">
+          <div class="avatar">${esc(initials(c.displayName))}</div>
+          <div style="flex:1">
+            <strong>${esc(c.displayName)}</strong>
+            <div class="role">${esc(c.email || "")}</div>
+          </div>
+          ${ADMIN ? `<button class="btn btn--ghost btn--sm" data-unassign="${c.uid}">Remove</button>` : ""}
+        </div>`).join("")
+    : `<p style="margin:0 0 12px;color:var(--muted)">No coaches assigned to this team.</p>`;
+
+  if (!ADMIN) { $("coachAssign").innerHTML = ""; return; }
+
+  const candidates = users.filter(u => u.role === "coach" && !uids.includes(u.uid));
+  $("coachAssign").innerHTML = candidates.length
+    ? `<div class="field" style="margin-top:6px">
+         <label for="coachPick">Assign a coach</label>
+         <select id="coachPick">
+           ${candidates.map(u =>
+             `<option value="${u.uid}">${esc(u.displayName || u.email)}</option>`).join("")}
+         </select>
+       </div>
+       <button class="btn btn--primary btn--sm" id="coachAdd">Add to team</button>`
+    : `<p style="margin:0;color:var(--muted);font-size:.9rem">
+         No unassigned coaches. Promote someone to coach on the
+         <a href="./users.html">People</a> page first.</p>`;
+
+  $("coachList").querySelectorAll("[data-unassign]").forEach(b => {
+    b.onclick = () => changeCoaches(uids.filter(u => u !== b.dataset.unassign));
+  });
+  const addBtn = $("coachAdd");
+  if (addBtn) addBtn.onclick = () => changeCoaches([...uids, $("coachPick").value]);
+}
+
+async function changeCoaches(next) {
+  try {
+    await setTeamCoaches(teamId, next);
+    // keep the public directory in step
+    for (const uid of next) {
+      const u = users.find(x => x.uid === uid);
+      if (u) await saveCoach(uid, {
+        displayName: u.displayName || u.email || "Coach",
+        email: u.email || "", role: "Coach", showEmail: true
+      });
+    }
+    teams = await listTeams();
+    coaches = await listCoaches();
+    say($("msg"), "Coaches updated.");
+    await renderCoaches();
+  } catch (err) {
+    say($("msg"), `Failed: ${esc(err.message)}`, "err");
+  }
+}
+
+const initials = n => String(n || "?").split(/\s+/).map(w => w[0]).slice(0, 2).join("").toUpperCase();
+</script>
+<script type="module" src="../js/nav.js"></script>
+</body>
+</html>

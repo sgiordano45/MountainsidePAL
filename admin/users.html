@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en" data-page="admin" data-base="../">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>People · Mountainside PAL Admin</title>
+  <meta name="robots" content="noindex">
+  <link rel="stylesheet" href="../css/styles.css">
+  <link rel="icon" href="../assets/favicon.png">
+</head>
+<body>
+
+<div id="site-header"></div>
+<div id="adminbar"></div>
+
+<main>
+  <div class="wrap">
+    <div id="gate"></div>
+    <div id="app" class="hidden">
+
+      <section class="section">
+        <h1>People &amp; Roles</h1>
+        <p class="lede">
+          Everyone who has signed in appears here. Grant a role to give someone editing
+          rights; coaches only ever affect the teams you assign them.
+        </p>
+        <div id="msg"></div>
+
+        <div class="notice">
+          <p style="margin:0">
+            <strong>To add someone:</strong> have them sign in once at
+            <a href="../login.html">the sign-in page</a>. They'll appear in this list as a
+            parent, and you can promote them here. No code change or deploy needed.
+          </p>
+        </div>
+
+        <div class="tablewrap" style="margin-top:20px">
+          <table class="data" id="userTable"></table>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</main>
+
+<div id="site-footer"></div>
+
+<script type="module">
+import { requireRole, isAdmin, BOOTSTRAP_ADMINS } from "../js/auth.js";
+import { renderAdminBar, say, esc } from "../js/admin-ui.js";
+import { listTeams, gradeLabel } from "../js/events.js";
+import { listUsers, setUserRole, saveCoach, removeCoach } from "../js/people.js";
+
+const $ = id => document.getElementById(id);
+let USER = null, users = [], teams = [];
+
+requireRole($("gate"), ["admin"], async ({ user, profile }) => {
+  USER = user;
+  renderAdminBar($("adminbar"), user, "users.html", { ...profile, isAdmin: true });
+  $("app").classList.remove("hidden");
+  teams = await listTeams();
+  await refresh();
+});
+
+async function refresh() {
+  try { users = await listUsers(); }
+  catch (err) { say($("msg"), `Couldn't load people: ${esc(err.message)}`, "err"); return; }
+
+  if (!users.length) {
+    $("userTable").innerHTML =
+      `<tbody><tr><td style="padding:30px;text-align:center;color:var(--muted)">
+        Nobody has signed in yet.</td></tr></tbody>`;
+    return;
+  }
+
+  $("userTable").innerHTML = `
+    <thead><tr>
+      <th>Name</th><th>Email</th><th>Role</th><th>Teams</th><th></th>
+    </tr></thead>
+    <tbody>${users.map(u => {
+      const boot = BOOTSTRAP_ADMINS.includes(u.uid);
+      const isMe = u.uid === USER.uid;
+      return `
+      <tr>
+        <td><strong>${esc(u.displayName || "—")}</strong>${
+          isMe ? ' <span class="badge">you</span>' : ""}${
+          boot ? ' <span class="badge badge--game">built-in admin</span>' : ""}</td>
+        <td>${esc(u.email || "")}</td>
+        <td>
+          <select data-role="${u.uid}" ${boot || isMe ? "disabled" : ""} style="min-width:120px">
+            ${["parent", "coach", "admin"].map(r =>
+              `<option value="${r}"${(u.role || "parent") === r ? " selected" : ""}>${r}</option>`
+            ).join("")}
+          </select>
+        </td>
+        <td>
+          <div data-teams="${u.uid}" style="display:${(u.role === "coach") ? "flex" : "none"};
+               gap:10px;flex-wrap:wrap">
+            ${teams.map(t => `
+              <label class="check" style="font-weight:600;font-size:.82rem">
+                <input type="checkbox" data-team="${t.id}" data-for="${u.uid}"
+                  ${(u.teamIds || []).includes(t.id) ? "checked" : ""}>
+                ${esc((t.name || gradeLabel(t.grade)).replace(" Grade", ""))}
+              </label>`).join("")}
+          </div>
+          ${u.role !== "coach" ? '<span style="color:var(--muted)">—</span>' : ""}
+        </td>
+        <td>
+          <button class="btn btn--primary btn--sm" data-save="${u.uid}"
+            ${boot || isMe ? "disabled" : ""}>Save</button>
+        </td>
+      </tr>`;
+    }).join("")}</tbody>`;
+
+  // toggle team checkboxes when the role changes
+  $("userTable").querySelectorAll("select[data-role]").forEach(sel => {
+    sel.onchange = () => {
+      const box = $("userTable").querySelector(`[data-teams="${sel.dataset.role}"]`);
+      if (box) box.style.display = sel.value === "coach" ? "flex" : "none";
+    };
+  });
+
+  $("userTable").querySelectorAll("button[data-save]").forEach(btn => {
+    btn.onclick = () => saveUser(btn.dataset.save, btn);
+  });
+}
+
+async function saveUser(uid, btn) {
+  btn.disabled = true;
+  try {
+    const u = users.find(x => x.uid === uid);
+    const role = $("userTable").querySelector(`select[data-role="${uid}"]`).value;
+    const teamIds = [...$("userTable").querySelectorAll(`input[data-for="${uid}"]:checked`)]
+      .map(i => i.dataset.team);
+
+    if (role === "coach" && !teamIds.length)
+      throw new Error("Pick at least one team for a coach — an unassigned coach can't edit anything.");
+
+    await setUserRole(uid, role, teamIds);
+
+    // Keep the public coaches directory in step with the role.
+    if (role === "coach") {
+      await saveCoach(uid, {
+        displayName: u.displayName || u.email || "Coach",
+        email: u.email || "", teamIds, role: "Coach", showEmail: true
+      });
+    } else if (u.role === "coach") {
+      await removeCoach(uid).catch(() => {});
+    }
+
+    say($("msg"), `${esc(u.displayName || u.email)} is now ${esc(role)}${
+      role === "coach" ? ` for ${teamIds.length} team${teamIds.length === 1 ? "" : "s"}` : ""}.`);
+    await refresh();
+  } catch (err) {
+    say($("msg"), `Failed: ${esc(err.message)}`, "err");
+  }
+  btn.disabled = false;
+}
+</script>
+<script type="module" src="../js/nav.js"></script>
+</body>
+</html>
