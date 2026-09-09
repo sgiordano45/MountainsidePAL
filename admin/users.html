@@ -48,7 +48,7 @@
 <script type="module">
 import { requireRole, isAdmin, BOOTSTRAP_ADMINS } from "../js/auth.js";
 import { renderAdminBar, say, esc } from "../js/admin-ui.js";
-import { listTeams, gradeLabel } from "../js/events.js";
+import { listTeams, teamName } from "../js/events.js";
 import { listUsers, setUserRole, saveCoach, removeCoach } from "../js/people.js";
 
 const $ = id => document.getElementById(id);
@@ -100,7 +100,7 @@ async function refresh() {
               <label class="check" style="font-weight:600;font-size:.82rem">
                 <input type="checkbox" data-team="${t.id}" data-for="${u.uid}"
                   ${(u.teamIds || []).includes(t.id) ? "checked" : ""}>
-                ${esc((t.name || gradeLabel(t.grade)).replace(" Grade", ""))}
+                ${esc(teamName(t).replace(" Grade", ""))}
               </label>`).join("")}
           </div>
           ${u.role !== "coach" ? '<span style="color:var(--muted)">—</span>' : ""}

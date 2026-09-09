@@ -21,7 +21,7 @@
       <h1>Mountainside PAL Basketball</h1>
       <p>
         Competitive youth basketball run by the Mountainside Police Athletic League —
-        one team per grade, selected by tryout, playing a full winter season.
+        teams by grade, selected by tryout, playing a full winter season.
       </p>
 
       <div class="big-actions">
@@ -51,7 +51,7 @@
           <p class="eyebrow">About the program</p>
           <h2>Town basketball, played properly</h2>
           <p class="lede">
-            Mountainside PAL Basketball fields one team per grade from 3rd through 8th.
+            Mountainside PAL Basketball fields teams from 3rd through 8th grade.
             Players try out in the fall, teams are selected, and the season runs through
             the winter with weekly practices and a league game schedule.
           </p>
@@ -69,11 +69,11 @@
         <div class="card card--accent">
           <h3>Key Dates</h3>
           <ul class="fact-list">
-            <li><span class="k">Registration opens</span> <span class="v"><span class="tbd">TBD</span></span></li>
-            <li><span class="k">Registration deadline</span> <span class="v"><span class="tbd">TBD</span></span></li>
-            <li><span class="k">Tryouts</span> <span class="v"><span class="tbd">TBD</span></span></li>
-            <li><span class="k">Season begins</span> <span class="v"><span class="tbd">TBD</span></span></li>
-            <li><span class="k">Season ends</span> <span class="v"><span class="tbd">TBD</span></span></li>
+            <li><span class="k">Registration opens</span> <span class="v"><span class="tbd" data-cfg="registrationOpens">TBD</span></span></li>
+            <li><span class="k">Registration deadline</span> <span class="v"><span class="tbd" data-cfg="registrationDeadline">TBD</span></span></li>
+            <li><span class="k">Tryouts</span> <span class="v"><span class="tbd" data-cfg="tryoutDates">TBD</span></span></li>
+            <li><span class="k">Season begins</span> <span class="v"><span class="tbd" data-cfg="practicesBegin">TBD</span></span></li>
+            <li><span class="k">Season ends</span> <span class="v"><span class="tbd" data-cfg="seasonEnds">TBD</span></span></li>
           </ul>
           <p style="margin:18px 0 0">
             <a class="btn btn--primary" href="./register.html">Registration info</a>
@@ -115,6 +115,10 @@
 </main>
 
 <div id="site-footer"></div>
+<script type="module">
+  import { applyContent } from "./js/content.js";
+  applyContent();
+</script>
 <script type="module" src="./js/nav.js"></script>
 </body>
 </html>

@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en" data-page="admin" data-base="../">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Site Content · Mountainside PAL Admin</title>
+  <meta name="robots" content="noindex">
+  <link rel="stylesheet" href="../css/styles.css">
+  <link rel="icon" href="../assets/favicon.png">
+</head>
+<body>
+
+<div id="site-header"></div>
+<div id="adminbar"></div>
+
+<main>
+  <div class="wrap">
+    <div id="gate"></div>
+    <div id="app" class="hidden">
+
+      <section class="section" style="padding-bottom:10px">
+        <h1>Site Content</h1>
+        <p class="lede">
+          Everything marked <span class="tbd">TBD</span> on the public pages is edited here.
+          Leave a field blank and the page keeps showing TBD — which is the honest default
+          until PAL confirms it.
+        </p>
+        <div id="msg"></div>
+      </section>
+
+      <form id="form"></form>
+
+      <section class="section" style="padding-top:0;padding-bottom:60px">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <button class="btn btn--primary btn--lg" id="saveBtn" type="button">Save all changes</button>
+          <a class="btn btn--ghost" href="../register.html" target="_blank" rel="noopener">
+            Preview Register page
+          </a>
+          <a class="btn btn--ghost" href="../program.html" target="_blank" rel="noopener">
+            Preview Program page
+          </a>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</main>
+
+<div id="site-footer"></div>
+
+<script type="module">
+import { requireRole, isAdmin } from "../js/auth.js";
+import { renderAdminBar, say, esc } from "../js/admin-ui.js";
+import { CONTENT_FIELDS, loadContent, saveContent } from "../js/content.js";
+
+const $ = id => document.getElementById(id);
+let content = {};
+
+requireRole($("gate"), ["admin"], async ({ user, profile }) => {
+  renderAdminBar($("adminbar"), user, "settings.html", { ...profile, isAdmin: true });
+  $("app").classList.remove("hidden");
+
+  content = await loadContent();
+  renderForm();
+  $("saveBtn").onclick = save;
+});
+
+function renderForm() {
+  $("form").innerHTML = CONTENT_FIELDS.map(group => `
+    <section class="section" style="padding:14px 0">
+      <div class="card">
+        <h3>${esc(group.group)}</h3>
+        ${group.fields.map(f => fieldHTML(f)).join("")}
+      </div>
+    </section>`).join("");
+
+  // FAQ add/remove wiring
+  $("form").querySelectorAll("[data-faq-add]").forEach(b => {
+    b.onclick = () => {
+      const key = b.dataset.faqAdd;
+      content[key] = [...(content[key] || []), { q: "", a: "" }];
+      collect();                 // keep whatever's typed elsewhere
+      renderForm();
+    };
+  });
+  $("form").querySelectorAll("[data-faq-del]").forEach(b => {
+    b.onclick = () => {
+      const [key, i] = b.dataset.faqDel.split("|");
+      collect();
+      content[key].splice(+i, 1);
+      renderForm();
+    };
+  });
+}
+
+function fieldHTML(f) {
+  const v = content[f.key];
+
+  if (f.type === "faq") {
+    const rows = (v || []);
+    return `
+      <div class="field">
+        <label>${esc(f.label)}</label>
+        ${rows.length ? rows.map((r, i) => `
+          <div class="card" style="margin-bottom:10px;background:var(--surface-alt)">
+            <div class="field">
+              <label for="q_${f.key}_${i}">Question</label>
+              <input type="text" id="q_${f.key}_${i}" data-q="${f.key}|${i}"
+                     value="${esc(r.q)}">
+            </div>
+            <div class="field" style="margin-bottom:8px">
+              <label for="a_${f.key}_${i}">Answer</label>
+              <textarea id="a_${f.key}_${i}" data-a="${f.key}|${i}"
+                        style="font-family:inherit;min-height:70px">${esc(r.a)}</textarea>
+            </div>
+            <button type="button" class="btn btn--danger btn--sm"
+                    data-faq-del="${f.key}|${i}">Remove</button>
+          </div>`).join("")
+          : `<p style="color:var(--muted);font-size:.9rem;margin:0 0 10px">
+               No FAQs yet — the page keeps its built-in placeholder questions.</p>`}
+        <button type="button" class="btn btn--ghost btn--sm" data-faq-add="${f.key}">
+          Add a question
+        </button>
+      </div>`;
+  }
+
+  if (f.type === "list") {
+    return `
+      <div class="field">
+        <label for="${f.key}">${esc(f.label)}</label>
+        <textarea id="${f.key}" data-list="${f.key}"
+          style="font-family:inherit;min-height:100px"
+          placeholder="${esc(f.ph || "One item per line")}">${esc((v || []).join("\n"))}</textarea>
+        <span class="hint">One item per line.</span>
+      </div>`;
+  }
+
+  if (f.type === "textarea") {
+    return `
+      <div class="field">
+        <label for="${f.key}">${esc(f.label)}</label>
+        <textarea id="${f.key}" data-text="${f.key}" style="font-family:inherit;min-height:90px"
+          placeholder="${esc(f.ph || "")}">${esc(v || "")}</textarea>
+      </div>`;
+  }
+
+  return `
+    <div class="field">
+      <label for="${f.key}">${esc(f.label)}</label>
+      <input type="text" id="${f.key}" data-text="${f.key}"
+             value="${esc(v || "")}" placeholder="${esc(f.ph || "")}">
+    </div>`;
+}
+
+/** Pull every input back into `content`. */
+function collect() {
+  for (const el of $("form").querySelectorAll("[data-text]"))
+    content[el.dataset.text] = el.value.trim();
+
+  for (const el of $("form").querySelectorAll("[data-list]"))
+    content[el.dataset.list] = el.value.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+
+  for (const el of $("form").querySelectorAll("[data-q]")) {
+    const [key, i] = el.dataset.q.split("|");
+    content[key] = content[key] || [];
+    content[key][+i] = { ...(content[key][+i] || {}), q: el.value.trim() };
+  }
+  for (const el of $("form").querySelectorAll("[data-a]")) {
+    const [key, i] = el.dataset.a.split("|");
+    content[key] = content[key] || [];
+    content[key][+i] = { ...(content[key][+i] || {}), a: el.value.trim() };
+  }
+
+  // drop FAQ rows with no question at all
+  for (const k of ["faqRegister", "faqProgram"])
+    if (Array.isArray(content[k])) content[k] = content[k].filter(r => r.q);
+}
+
+async function save() {
+  const btn = $("saveBtn");
+  btn.disabled = true;
+  try {
+    collect();
+    await saveContent(content);
+    const n = Object.values(content).filter(v =>
+      Array.isArray(v) ? v.length : String(v || "").trim()).length;
+    say($("msg"), `Saved. ${n} field${n === 1 ? "" : "s"} now live on the public pages.`);
+  } catch (err) {
+    say($("msg"), `Failed: ${esc(err.message)}`, "err");
+  }
+  btn.disabled = false;
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+</script>
+<script type="module" src="../js/nav.js"></script>
+</body>
+</html>

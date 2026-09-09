@@ -2,7 +2,8 @@
 
 **Stack:** static HTML/CSS/vanilla JS (ES modules, no build step) on GitHub Pages, Firebase (Firestore + Auth) as the backend.
 **Repo:** `sgiordano45/MountainsidePAL`, Pages served from `main` at root → `https://sgiordano45.github.io/MountainsidePAL/`
-**Grades:** 3rd–8th. One team per grade, selected by tryout.
+**Grades:** 3rd–8th, selected by tryout. A grade may field more than one team —
+team IDs are `grade-5` for a grade's first team and `grade-5-b` / `grade-5-girls` for extras.
 **Status:** Stephen is *building*, not running the program. This is a proposal to show PAL, so it needs to demo well with realistic seed data.
 
 ## Decisions locked in
@@ -231,9 +232,13 @@ can't have open Firestore write rules, so admin writes are gated by Google sign-
 single hardcoded UID in both `js/auth.js` and `firestore.rules`. Roles and coach scoping stay
 in Phase 3 — swapping the hardcoded UID for a `users/{uid}` lookup is a two-line rules change.
 
-**Phase 3 — Teams, rosters, roles.** `users` collection and roles, coach scoping, rules
-tightened, `teams.html`, `team.html`, gated rosters, `admin/teams.html`. Google sign-in
-already exists from Phase 2.
+**Phase 3 — Teams, rosters, roles.** ✅ *Done.* `users` collection and roles, coach scoping,
+rules tightened, `teams.html`, `team.html`, gated rosters, `admin/teams.html`,
+`admin/users.html`, `admin/announcements.html`.
+
+**Phase 4 — Editable content.** ✅ *Done.* `admin/settings.html` writes `config/site.content`;
+public pages mark their slots with `data-cfg` and fill them at load. An unfilled slot keeps
+its TBD chip, so nothing silently shows a blank where a fee should be.
 
 **Phase 4 — Announcements & coaches.** Announcement CRUD, site-wide alert banner, `announcements.html`, `coaches.html`. This is the weather-cancellation path — want it before the first January snow.
 

@@ -8,7 +8,8 @@ export const ADMIN_NAV = [
   { href: "import.html",        label: "Import" },
   { href: "announcements.html", label: "Announcements" },
   { href: "teams.html",         label: "Teams & Rosters" },
-  { href: "users.html",         label: "People", adminOnly: true }
+  { href: "users.html",         label: "People",   adminOnly: true },
+  { href: "settings.html",      label: "Content",  adminOnly: true }
 ];
 
 export const esc = s => String(s ?? "").replace(/[&<>"]/g, c =>

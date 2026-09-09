@@ -44,7 +44,7 @@
 <script type="module">
 import { isConfigured, getFirebase } from "./js/firebase-config.js";
 import { SITE } from "./js/nav-config.js";
-import { GRADES, gradeLabel, teamIdForGrade, listTeams } from "./js/events.js";
+import { GRADES, gradeLabel, teamIdForGrade, teamName, listTeams } from "./js/events.js";
 
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -67,16 +67,16 @@ document.getElementById("contacts").innerHTML = SITE.contacts.map(c => `
 
 // Static shell: one card per grade, filled in from Firestore when available.
 const grid = document.getElementById("coachGrid");
-grid.innerHTML = GRADES.map(g => placeholder(g)).join("");
+grid.innerHTML = GRADES.map(g => placeholder({ id: teamIdForGrade(g), grade: g, label: "" })).join("");
 if (isConfigured) hydrate();
 
-function placeholder(g) {
+function placeholder(team) {
   return `
     <div class="card">
-      <h3 style="margin-bottom:4px">${gradeLabel(g)}</h3>
+      <h3 style="margin-bottom:4px">${esc(teamName(team) || gradeLabel(team.grade))}</h3>
       <p style="margin:0;color:var(--muted);font-size:.9rem">Coach to be announced.</p>
       <p style="margin:12px 0 0">
-        <a class="btn btn--ghost btn--sm" href="./team.html?id=${teamIdForGrade(g)}">Team page</a>
+        <a class="btn btn--ghost btn--sm" href="./team.html?id=${esc(team.id)}">Team page</a>
       </p>
     </div>`;
 }
@@ -86,16 +86,16 @@ async function hydrate() {
     const fb = await getFirebase();
     const { collection, getDocs } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
     const [teams, snap] = await Promise.all([listTeams(), getDocs(collection(fb.db, "coaches"))]);
+    if (!teams.length) return;
     const coaches = Object.fromEntries(snap.docs.map(d => [d.id, d.data()]));
-    const byTeam = Object.fromEntries(teams.map(t => [t.id, t]));
 
-    grid.innerHTML = GRADES.map(g => {
-      const id = teamIdForGrade(g);
-      const list = (byTeam[id]?.coachUids || []).map(u => coaches[u]).filter(Boolean);
-      if (!list.length) return placeholder(g);
+    grid.innerHTML = teams.map(team => {
+      const id = team.id;
+      const list = (team.coachUids || []).map(u => coaches[u]).filter(Boolean);
+      if (!list.length) return placeholder(team);
       return `
         <div class="card">
-          <h3 style="margin-bottom:12px">${esc(byTeam[id]?.name || gradeLabel(g))}</h3>
+          <h3 style="margin-bottom:12px">${esc(teamName(team))}</h3>
           ${list.map(c => `
             <div class="coachcard" style="margin-bottom:12px">
               <div class="avatar">${esc(initials(c.displayName))}</div>

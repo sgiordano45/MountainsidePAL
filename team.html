@@ -59,7 +59,7 @@ import { isConfigured } from "./js/firebase-config.js";
 import { getFirebase } from "./js/firebase-config.js";
 import { onAuthChange } from "./js/auth.js";
 import {
-  GRADES, gradeLabel, teamIdForGrade, listTeams, listEvents, listLocations,
+  GRADES, gradeLabel, teamIdForGrade, teamName, listTeams, listEvents, listLocations,
   eventTitle, groupByDay, mapsUrl, parseLocal, formatTime
 } from "./js/events.js";
 
@@ -68,19 +68,24 @@ const esc = s => String(s ?? "").replace(/[&<>"]/g, c =>
 const $ = id => document.getElementById(id);
 
 const params = new URLSearchParams(location.search);
+// Team IDs are grade-N, optionally with a label suffix (grade-5-b, grade-5-girls).
 let teamId = params.get("id") || "";
-if (!/^grade-[3-8]$/.test(teamId)) teamId = teamIdForGrade(3);
+if (!/^grade-[3-8](-[a-z0-9-]{1,24})?$/.test(teamId)) teamId = teamIdForGrade(3);
 const grade = +teamId.split("-")[1];
 
-// static shell first
+// static shell first — replaced once the real team list loads
 document.title = `${gradeLabel(grade)} · Mountainside PAL Basketball`;
 $("teamName").textContent = gradeLabel(grade);
 $("fullSched").href = `./schedule.html?team=${teamId}`;
-$("teamSwitch").innerHTML = GRADES.map(g => {
-  const id = teamIdForGrade(g);
-  return `<a href="./team.html?id=${id}"${id === teamId ? ' aria-current="page"' : ""}>${g}${
-    g === 3 ? "rd" : "th"}</a>`;
-}).join("");
+renderSwitcher(GRADES.map(g => ({ id: teamIdForGrade(g), grade: g, label: "" })));
+
+function renderSwitcher(teams) {
+  $("teamSwitch").innerHTML = teams.map(t => {
+    const short = `${t.grade}${t.grade === 3 ? "rd" : "th"}${t.label ? " " + t.label : ""}`;
+    return `<a href="./team.html?id=${t.id}"${
+      t.id === teamId ? ' aria-current="page"' : ""}>${short}</a>`;
+  }).join("");
+}
 
 if (!isConfigured) {
   $("sched").innerHTML = `<p class="empty">The schedule appears here once the season is posted.</p>`;
@@ -96,8 +101,10 @@ async function hydrate() {
     const teamsById = Object.fromEntries(teams.map(t => [t.id, t]));
     const locsById  = Object.fromEntries(locs.map(l => [l.id, l]));
     const team = teamsById[teamId];
+    if (teams.length) renderSwitcher(teams);
 
-    if (team?.name) $("teamName").textContent = team.name;
+    const label = teamName(team);
+    if (label) { $("teamName").textContent = label; document.title = `${label} · Mountainside PAL Basketball`; }
     $("teamSub").textContent = team?.division
       ? `${team.division} · Mountainside PAL Basketball`
       : "Mountainside PAL Basketball";

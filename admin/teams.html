@@ -22,6 +22,30 @@
         <h1>Teams &amp; Rosters</h1>
         <div id="msg"></div>
 
+        <div class="card" id="newTeamCard" style="margin-bottom:18px">
+          <h3>Add a Team</h3>
+          <p style="color:var(--muted);font-size:.9rem">
+            A grade can field more than one team. The label distinguishes them —
+            <em>A</em>/<em>B</em>, <em>Boys</em>/<em>Girls</em>, whatever PAL uses.
+            Leave it blank for a grade's only team.
+          </p>
+          <div class="form-grid">
+            <div class="field" style="flex:0 0 130px">
+              <label for="nGrade">Grade</label>
+              <select id="nGrade"></select>
+            </div>
+            <div class="field">
+              <label for="nLabel">Label <span class="hint">optional</span></label>
+              <input type="text" id="nLabel" maxlength="18" placeholder="B">
+            </div>
+            <div class="field">
+              <label>&nbsp;</label>
+              <button class="btn btn--primary btn--sm" id="nAdd">Create team</button>
+            </div>
+          </div>
+          <p class="hint" id="nPreview" style="margin:0"></p>
+        </div>
+
         <div class="toolbar">
           <div class="field">
             <label for="tTeam">Team</label>
@@ -30,7 +54,10 @@
           <div class="spacer"></div>
           <div class="field" style="flex:0 0 auto">
             <label>&nbsp;</label>
-            <a class="btn btn--ghost btn--sm" id="viewTeam" href="../team.html">View public page</a>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <a class="btn btn--ghost btn--sm" id="viewTeam" href="../team.html">View public page</a>
+              <button class="btn btn--danger btn--sm hidden" id="delTeam">Delete team</button>
+            </div>
           </div>
         </div>
       </section>
@@ -111,7 +138,8 @@
 <script type="module">
 import { requireRole, isAdmin, editableTeams } from "../js/auth.js";
 import { renderAdminBar, say, esc } from "../js/admin-ui.js";
-import { listTeams, gradeLabel } from "../js/events.js";
+import { listTeams, gradeLabel, teamName, teamIdForGrade, createTeam, deleteTeam,
+         GRADES } from "../js/events.js";
 import {
   listRoster, savePlayer, deletePlayer, parseRosterPaste,
   listCoaches, listUsers, setTeamCoaches, saveCoach
@@ -136,8 +164,25 @@ requireRole($("gate"), ["admin", "coach"], async ({ user, profile }) => {
     return;
   }
 
-  for (const t of mine) $("tTeam").add(new Option(t.name || gradeLabel(t.grade), t.id));
+  for (const t of mine) $("tTeam").add(new Option(teamName(t), t.id));
   teamId = mine[0].id;
+
+  // Only admins create or delete teams.
+  if (!ADMIN) {
+    $("newTeamCard").classList.add("hidden");
+  } else {
+    for (const g of GRADES) $("nGrade").add(new Option(gradeLabel(g), g));
+    $("delTeam").classList.remove("hidden");
+    const preview = () => {
+      const id = teamIdForGrade($("nGrade").value, $("nLabel").value.trim());
+      $("nPreview").textContent = `Will be created as ${id}`;
+    };
+    $("nGrade").onchange = preview;
+    $("nLabel").oninput = preview;
+    preview();
+    $("nAdd").onclick = addTeam;
+    $("delTeam").onclick = removeTeam;
+  }
 
   coaches = await listCoaches().catch(() => ({}));
   if (ADMIN) users = await listUsers().catch(() => []);
@@ -154,6 +199,50 @@ async function loadTeam() {
   $("viewTeam").href = `../team.html?id=${teamId}`;
   clearPlayerForm();
   await Promise.all([loadRoster(), renderCoaches()]);
+}
+
+/* ---- team create / delete ---- */
+
+async function addTeam() {
+  const btn = $("nAdd");
+  btn.disabled = true;
+  try {
+    const t = await createTeam($("nGrade").value, $("nLabel").value.trim());
+    $("nLabel").value = "";
+    teams = await listTeams();
+    $("tTeam").innerHTML = "";
+    for (const x of teams) $("tTeam").add(new Option(teamName(x), x.id));
+    teamId = t.id;
+    $("tTeam").value = teamId;
+    say($("msg"), `Created ${esc(teamName(t))}.`);
+    await loadTeam();
+  } catch (err) {
+    say($("msg"), `Failed: ${esc(err.message)}`, "err");
+  }
+  btn.disabled = false;
+}
+
+async function removeTeam() {
+  const t = teams.find(x => x.id === teamId);
+  if (!t) return;
+  if (roster.length) {
+    say($("msg"), "Clear the roster before deleting this team.", "err");
+    return;
+  }
+  if (!confirm(`Delete ${teamName(t)}? This can't be undone.`)) return;
+  try {
+    await deleteTeam(teamId);
+    teams = await listTeams();
+    $("tTeam").innerHTML = "";
+    for (const x of teams) $("tTeam").add(new Option(teamName(x), x.id));
+    if (!teams.length) { say($("msg"), "All teams deleted."); return; }
+    teamId = teams[0].id;
+    $("tTeam").value = teamId;
+    say($("msg"), `Deleted ${esc(teamName(t))}.`);
+    await loadTeam();
+  } catch (err) {
+    say($("msg"), `Failed: ${esc(err.message)}`, "err");
+  }
 }
 
 /* ---- roster ---- */

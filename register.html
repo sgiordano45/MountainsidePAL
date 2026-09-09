@@ -33,17 +33,17 @@
         <div class="card card--accent">
           <h3>The Essentials</h3>
           <ul class="fact-list">
-            <li><span class="k">Who can register</span> <span class="v">Mountainside residents, grades 3–8</span></li>
-            <li><span class="k">Registration fee</span> <span class="v"><span class="tbd">$TBD</span></span></li>
-            <li><span class="k">Deadline</span> <span class="v"><span class="tbd">TBD</span></span></li>
-            <li><span class="k">Tryout dates</span> <span class="v"><span class="tbd">TBD</span></span></li>
-            <li><span class="k">Season</span> <span class="v"><span class="tbd">TBD</span> – <span class="tbd">TBD</span></span></li>
+            <li><span class="k">Who can register</span> <span class="v" data-cfg="whoCanRegister">Mountainside residents, grades 3–8</span></li>
+            <li><span class="k">Registration fee</span> <span class="v"><span class="tbd" data-cfg="fee">$TBD</span></span></li>
+            <li><span class="k">Deadline</span> <span class="v"><span class="tbd" data-cfg="registrationDeadline">TBD</span></span></li>
+            <li><span class="k">Tryout dates</span> <span class="v"><span class="tbd" data-cfg="tryoutDates">TBD</span></span></li>
+            <li><span class="k">Season</span> <span class="v"><span class="tbd" data-cfg="practicesBegin">TBD</span> – <span class="tbd" data-cfg="seasonEnds">TBD</span></span></li>
           </ul>
         </div>
 
         <div class="card">
           <h3>What Registration Includes</h3>
-          <ul class="checklist">
+          <ul class="checklist" data-cfg-list="registrationIncludes">
             <li>A spot at tryouts and team evaluation</li>
             <li>Team uniform</li>
             <li>Weekly team practices through the season</li>
@@ -76,8 +76,7 @@
         <div class="card">
           <h3>2. Submit payment</h3>
           <p style="margin-bottom:0">
-            <span class="tbd">Payment method and instructions TBD</span> — payment is handled
-            separately from the form.
+            <span class="tbd" data-cfg="paymentInfo">Payment method and instructions TBD</span>
           </p>
         </div>
         <div class="card">
@@ -110,7 +109,7 @@
             Along with the registration form, PAL requires the following before a player
             can take the court:
           </p>
-          <ul class="checklist">
+          <ul class="checklist" data-cfg-list="formsRequired">
             <li><span class="tbd">Signed liability waiver — TBD</span></li>
             <li><span class="tbd">Proof of residency / grade — TBD</span></li>
             <li><span class="tbd">Concussion policy acknowledgement — TBD</span></li>
@@ -126,14 +125,13 @@
         <div>
           <h2>Tryouts</h2>
           <p>
-            Mountainside PAL Basketball selects one team per grade, so every registered
-            player attends a tryout. Tryouts are an evaluation, not a cut-list formality —
+            Every registered player attends a tryout. Tryouts are an evaluation, not a cut-list formality —
             coaches are looking at skills, effort and coachability.
           </p>
           <ul class="fact-list">
-            <li><span class="k">Dates</span> <span class="v"><span class="tbd">TBD</span></span></li>
-            <li><span class="k">Location</span> <span class="v"><span class="tbd">TBD</span></span></li>
-            <li><span class="k">What to bring</span> <span class="v"><span class="tbd">TBD</span></span></li>
+            <li><span class="k">Dates</span> <span class="v"><span class="tbd" data-cfg="tryoutDates">TBD</span></span></li>
+            <li><span class="k">Location</span> <span class="v"><span class="tbd" data-cfg="tryoutLocation">TBD</span></span></li>
+            <li><span class="k">What to bring</span> <span class="v"><span class="tbd" data-cfg="tryoutBring">TBD</span></span></li>
           </ul>
           <p style="margin-top:16px">
             Teams are announced after tryouts conclude and appear on the
@@ -148,7 +146,7 @@
   <section class="section section--alt">
     <div class="wrap">
       <h2 class="center">Registration Questions</h2>
-      <div class="faq" style="max-width:760px; margin:26px auto 0">
+      <div class="faq" data-faq="faqRegister" style="max-width:760px; margin:26px auto 0">
         <details>
           <summary>My child is new to Mountainside. Can they still register?</summary>
           <p><span class="tbd">Answer TBD</span> — confirm residency requirements with PAL.</p>
@@ -190,6 +188,10 @@
       `<a href="mailto:${PRIMARY.email}">${PRIMARY.email}</a> or ` +
       `<a href="tel:${PRIMARY.tel}">${PRIMARY.phone}</a>.`;
   }
+</script>
+<script type="module">
+  import { applyContent } from "./js/content.js";
+  applyContent();
 </script>
 <script type="module" src="./js/nav.js"></script>
 </body>

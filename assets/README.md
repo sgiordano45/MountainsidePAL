@@ -1,11 +1,12 @@
 # assets/
 
-| File | Status | Notes |
-|---|---|---|
-| `favicon.png` | placeholder | Green "PAL" monogram. Replace with a favicon cut from the real logo. |
-| `pal-logo.png` | **missing — add this** | The green/white bulldog mark. Transparent PNG, 512px+ square. SVG also welcome as `pal-logo.svg`. |
+| File | Notes |
+|---|---|
+| `pal-logo.png` | Mountainside PAL bulldog mark. 512×512 PNG, transparent surround, interior white preserved. Converted from the original JPEG. |
+| `favicon.png` | 180×180, cut from the same mark. |
 
-Until `pal-logo.png` exists, the header falls back to a "PAL" monogram automatically —
-no broken image icon. Drop the file in and it appears everywhere.
+The site's green (`--pal-green: #004818` in `css/styles.css`) is sampled from this logo.
+If PAL supplies an official vector version, drop it in as `pal-logo.svg` and switch the
+`<img>` source in `js/nav.js`.
 
-Team photos go here too, named by team ID: `team-grade-5.jpg`, etc.
+Team photos go here too, named by team ID: `team-grade-5.jpg`, `team-grade-5-b.jpg`.

@@ -114,7 +114,7 @@
 <script type="module">
 import { requireRole, isAdmin, editableTeams } from "../js/auth.js";
 import { renderAdminBar, say, esc, dateInputValue, localDateFrom } from "../js/admin-ui.js";
-import { listTeams, gradeLabel } from "../js/events.js";
+import { listTeams, teamName } from "../js/events.js";
 import {
   listAnnouncements, createAnnouncement, updateAnnouncement, deleteAnnouncement,
   getSiteConfig, setAlertBanner
@@ -138,7 +138,7 @@ requireRole($("gate"), ["admin", "coach"], async ({ user, profile }) => {
 
   const sel = $("aTeam");
   if (ADMIN) sel.add(new Option("Everyone (program-wide)", "all"));
-  for (const t of mine) sel.add(new Option(t.name || gradeLabel(t.grade), t.id));
+  for (const t of mine) sel.add(new Option(teamName(t), t.id));
   if (!sel.options.length) {
     say($("msg"), "You aren't assigned to a team yet, so there's nothing to post to. " +
       "Ask an administrator to assign you.", "warn");
@@ -254,7 +254,7 @@ async function loadList() {
   const allowed = editableTeams(USER, PROFILE);
   const canEdit = a => allowed === null || allowed.includes(a.teamId);
   const teamName = id => id === "all" ? "Everyone"
-    : (teams.find(t => t.id === id)?.name || id);
+    : (teamName(teams.find(t => t.id === id)) || id);
   const now = new Date();
 
   $("list").innerHTML = items.map(a => {

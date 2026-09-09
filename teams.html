@@ -17,8 +17,8 @@
   <section class="hero" style="padding:40px 0 44px">
     <div class="wrap">
       <h1 style="margin-bottom:.2em">Teams</h1>
-      <p style="margin-bottom:0">One team per grade, 3rd through 8th. Pick a team for its
-        coaches, schedule and roster.</p>
+      <p style="margin-bottom:0">Teams by grade, 3rd through 8th. Pick a team for its coaches,
+        schedule and roster.</p>
     </div>
   </section>
 
@@ -37,23 +37,27 @@
 
 <script type="module">
 import { isConfigured } from "./js/firebase-config.js";
-import { GRADES, gradeLabel, teamIdForGrade, listTeams, listEvents, parseLocal }
-  from "./js/events.js";
+import { GRADES, gradeLabel, teamIdForGrade, teamName, byGrade,
+         listTeams, listEvents, parseLocal } from "./js/events.js";
 
 const grid = document.getElementById("teamGrid");
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-// Render the six grades immediately from static data — the page is useful with or
-// without a backend. Live details fill in afterwards if Firestore is connected.
-grid.innerHTML = GRADES.map(g => card(g, null, null)).join("");
+// Static shell: assume one team per grade so the page is useful with no backend.
+// Firestore is the real source of truth and may have several teams in a grade.
+grid.innerHTML = GRADES
+  .map(g => ({ id: teamIdForGrade(g), grade: g, label: "" }))
+  .map(t => card(t, null))
+  .join("");
 
 if (isConfigured) hydrate();
 
 async function hydrate() {
   try {
     const [teams, events] = await Promise.all([listTeams(), listEvents()]);
-    const byId = Object.fromEntries(teams.map(t => [t.id, t]));
+    if (!teams.length) return;
+
     const now = Date.now();
     const next = {};
     for (const ev of events) {
@@ -61,24 +65,25 @@ async function hydrate() {
       if (!d || d.getTime() < now || ev.status === "cancelled") continue;
       if (!next[ev.teamId] || d < next[ev.teamId].d) next[ev.teamId] = { d, ev };
     }
-    grid.innerHTML = GRADES.map(g =>
-      card(g, byId[teamIdForGrade(g)], next[teamIdForGrade(g)])
-    ).join("");
+
+    grid.innerHTML = byGrade(teams)
+      .flatMap(g => g.teams.map(t => card(t, next[t.id])))
+      .join("");
   } catch (err) {
     console.warn("[teams] live data unavailable:", err.message);
   }
 }
 
-function card(grade, team, next) {
-  const id = teamIdForGrade(grade);
+function card(team, next) {
   const sub = next
     ? `Next: ${next.d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}`
-    : (team ? "Schedule coming soon" : "Team page");
+    : "Team page";
+  const suffix = team.grade === 3 ? "rd" : "th";
   return `
-    <a class="teamcard" href="./team.html?id=${id}">
-      <div class="grade">${grade}<span style="font-size:1rem">${
-        grade === 3 ? "rd" : "th"}</span></div>
-      <div class="name">${esc(team?.name || gradeLabel(grade))}</div>
+    <a class="teamcard" href="./team.html?id=${esc(team.id)}">
+      <div class="grade">${team.grade}<span style="font-size:1rem">${suffix}</span>${
+        team.label ? `<span style="font-size:1.1rem;margin-left:6px">${esc(team.label)}</span>` : ""}</div>
+      <div class="name">${esc(teamName(team) || gradeLabel(team.grade))}</div>
       <div class="sub">${esc(sub)}</div>
     </a>`;
 }

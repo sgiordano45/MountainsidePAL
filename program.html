@@ -26,10 +26,10 @@
   <section class="section">
     <div class="wrap">
       <p class="eyebrow">Divisions</p>
-      <h2>One Team Per Grade</h2>
-      <p class="lede">
-        Mountainside PAL fields a single team at each grade level from 3rd through 8th.
-        Players are placed on the team matching their current school grade.
+      <h2>Grade Divisions</h2>
+      <p class="lede" data-cfg="divisionsIntro">
+        Mountainside PAL fields teams at each grade level from 3rd through 8th.
+        Players are placed by their current school grade.
       </p>
 
       <div class="grid grid--3" style="margin-top:26px">
@@ -58,13 +58,13 @@
           <p class="eyebrow">Getting on a team</p>
           <h2>Tryouts &amp; Selection</h2>
           <p>
-            Because there is one team per grade, every registered player attends a tryout.
+            Every registered player attends a tryout.
             Coaches evaluate skills, effort and coachability across the session.
           </p>
           <ul class="fact-list">
-            <li><span class="k">Tryout dates</span> <span class="v"><span class="tbd">TBD</span></span></li>
-            <li><span class="k">Location</span> <span class="v"><span class="tbd">TBD</span></span></li>
-            <li><span class="k">Teams announced</span> <span class="v"><span class="tbd">TBD</span></span></li>
+            <li><span class="k">Tryout dates</span> <span class="v"><span class="tbd" data-cfg="tryoutDates">TBD</span></span></li>
+            <li><span class="k">Location</span> <span class="v"><span class="tbd" data-cfg="tryoutLocation">TBD</span></span></li>
+            <li><span class="k">Teams announced</span> <span class="v"><span class="tbd" data-cfg="teamsAnnounced">TBD</span></span></li>
           </ul>
           <p style="margin-top:16px">
             Rosters are posted on the <a href="./teams.html">Teams</a> page once selection is complete.
@@ -76,12 +76,12 @@
           <p class="eyebrow">Calendar</p>
           <h2>Season Dates</h2>
           <ul class="fact-list">
-            <li><span class="k">Registration opens</span> <span class="v"><span class="tbd">TBD</span></span></li>
-            <li><span class="k">Registration closes</span> <span class="v"><span class="tbd">TBD</span></span></li>
-            <li><span class="k">Tryouts</span> <span class="v"><span class="tbd">TBD</span></span></li>
-            <li><span class="k">Practices begin</span> <span class="v"><span class="tbd">TBD</span></span></li>
-            <li><span class="k">First game</span> <span class="v"><span class="tbd">TBD</span></span></li>
-            <li><span class="k">Season ends</span> <span class="v"><span class="tbd">TBD</span></span></li>
+            <li><span class="k">Registration opens</span> <span class="v"><span class="tbd" data-cfg="registrationOpens">TBD</span></span></li>
+            <li><span class="k">Registration closes</span> <span class="v"><span class="tbd" data-cfg="registrationDeadline">TBD</span></span></li>
+            <li><span class="k">Tryouts</span> <span class="v"><span class="tbd" data-cfg="tryoutDates">TBD</span></span></li>
+            <li><span class="k">Practices begin</span> <span class="v"><span class="tbd" data-cfg="practicesBegin">TBD</span></span></li>
+            <li><span class="k">First game</span> <span class="v"><span class="tbd" data-cfg="firstGame">TBD</span></span></li>
+            <li><span class="k">Season ends</span> <span class="v"><span class="tbd" data-cfg="seasonEnds">TBD</span></span></li>
           </ul>
           <p style="margin-top:16px">
             The full game and practice calendar lives on the
@@ -99,8 +99,8 @@
         <div class="card">
           <h3>Practice Expectations</h3>
           <ul class="checklist">
-            <li>Roughly <span class="tbd">TBD</span> practices per week through the season</li>
-            <li>Held at <span class="tbd">TBD</span></li>
+            <li>Roughly <span class="tbd" data-cfg="practiceFrequency">TBD</span> practices per week through the season</li>
+            <li>Held at <span class="tbd" data-cfg="practiceLocation">TBD</span></li>
             <li>Players arrive on time, dressed and ready</li>
             <li>Let your coach know in advance if you'll miss a practice</li>
             <li>Consistent attendance affects playing time</li>
@@ -110,8 +110,8 @@
         <div class="card">
           <h3>Game Expectations</h3>
           <ul class="checklist">
-            <li>Games are typically played on <span class="tbd">TBD</span></li>
-            <li>Arrive <span class="tbd">TBD</span> minutes before tip-off</li>
+            <li>Games are typically played on <span class="tbd" data-cfg="gameDays">TBD</span></li>
+            <li>Arrive <span class="tbd" data-cfg="arriveBefore">TBD</span> minutes before tip-off</li>
             <li>Full uniform required</li>
             <li>Players and parents represent Mountainside — respect officials and opponents</li>
             <li>Cancellations are posted to this site and pushed to the top of every page</li>
@@ -123,7 +123,7 @@
       <div class="card card--accent" style="margin-top:18px">
         <h3>Travel &amp; Tournaments</h3>
         <p>
-          <span class="tbd">PAL's philosophy on travel and tournament play — TBD.</span>
+          <span class="tbd" data-cfg="travelPhilosophy">PAL's philosophy on travel and tournament play — TBD.</span>
         </p>
         <p style="margin-bottom:0">
           This is one of the first things parents ask about, so it's worth writing a real
@@ -137,7 +137,7 @@
   <section class="section section--alt">
     <div class="wrap">
       <h2 class="center">Frequently Asked Questions</h2>
-      <div class="faq" style="max-width:760px; margin:26px auto 0">
+      <div class="faq" data-faq="faqProgram" style="max-width:760px; margin:26px auto 0">
         <details>
           <summary>How competitive is PAL basketball?</summary>
           <p><span class="tbd">Answer TBD</span> — worth distinguishing PAL from recreation league and from club/AAU basketball.</p>
@@ -192,6 +192,10 @@
       `<a href="tel:${PRIMARY.tel}">${PRIMARY.phone}</a>. You can also follow the ` +
       `program on <a href="${SITE.instagram.url}" target="_blank" rel="noopener">Instagram</a>.`;
   }
+</script>
+<script type="module">
+  import { applyContent } from "./js/content.js";
+  applyContent();
 </script>
 <script type="module" src="./js/nav.js"></script>
 </body>

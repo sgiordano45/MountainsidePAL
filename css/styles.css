@@ -4,10 +4,10 @@
    ========================================================================== */
 
 :root {
-  --pal-green:        #1C4F2E;
-  --pal-green-dark:   #123520;
-  --pal-green-light:  #2E7D4F;
-  --pal-green-pale:   #E8F0EA;
+  --pal-green:        #004818;   /* sampled from the PAL bulldog mark */
+  --pal-green-dark:   #00300F;
+  --pal-green-light:  #1C7A3B;
+  --pal-green-pale:   #E6F0E9;
   --pal-white:        #FFFFFF;
 
   --ink:              #1A1A1A;
@@ -33,10 +33,10 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --pal-green:      #4CA46C;
-    --pal-green-dark: #143A22;
-    --pal-green-light:#6FBF8C;
-    --pal-green-pale: #16261C;
+    --pal-green:      #4FB073;
+    --pal-green-dark: #00250B;
+    --pal-green-light:#77C994;
+    --pal-green-pale: #12241A;
     --ink:            #ECF1EE;
     --ink-soft:       #C3CCC6;
     --muted:          #93A099;
@@ -112,8 +112,8 @@ img { max-width: 100%; height: auto; }
   color: #fff; text-decoration: none; font-weight: 800;
   letter-spacing: -.01em; margin-right: auto;
 }
-.brand-logo { display: block; width: 44px; height: 44px; flex: 0 0 44px; }
-.brand-logo img { width: 44px; height: 44px; object-fit: contain; display: block; }
+.brand-logo { display: block; width: 46px; height: 46px; flex: 0 0 46px; }
+.brand-logo img { width: 46px; height: 46px; object-fit: contain; display: block; }
 .brand-mark {
   width: 44px; height: 44px; border-radius: 50%;
   background: var(--pal-green); color: #fff;
