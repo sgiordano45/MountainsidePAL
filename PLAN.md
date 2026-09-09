@@ -1,7 +1,8 @@
 # Mountainside PAL Basketball — Site Plan
 
 **Stack:** static HTML/CSS/vanilla JS (ES modules, no build step) on GitHub Pages, Firebase (Firestore + Auth) as the backend.
-**Repo:** `sgiordano45/MountainsidePAL`, Pages served from `main` at root → `https://sgiordano45.github.io/MountainsidePAL/`
+**Repo:** `sgiordano45/MountainsidePAL`, Pages served from `main` at root.
+**Domain:** `palmountainsidetravelbasketball.com` (Cloudflare DNS, GitHub Pages TLS).
 **Program:** Mountainside PAL Travel Basketball.
 **Grades:** 3rd–8th, selected by tryout. A grade may field more than one team —
 team IDs are `grade-5` for a grade's first team and `grade-5-b` / `grade-5-girls` for extras.
@@ -16,7 +17,7 @@ team IDs are `grade-5` for a grade's first team and `grade-5-b` / `grade-5-girls
 | Rosters | Login-gated. **Any** Google sign-in can view — no account provisioning. Keeps kids' names out of search engines at zero admin cost. |
 | Schedule source of truth | Firestore, edited through an admin page. League produces the game schedule; we display it. |
 | Admin | Role-based: `admin` (you, full access) + `coach` (scoped to their own team). |
-| Domain | None yet. Lives on the GitHub Pages project URL until PAL adopts it. |
+| Domain | `palmountainsidetravelbasketball.com`, registered through Cloudflare. |
 | Branding | Mountainside PAL green/white, bulldog mark. |
 
 ---

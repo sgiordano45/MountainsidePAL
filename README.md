@@ -2,7 +2,8 @@
 
 Static site on GitHub Pages, Firebase (Firestore + Auth) backend.
 
-- **Live:** https://sgiordano45.github.io/MountainsidePAL/
+- **Live:** https://palmountainsidetravelbasketball.com
+- **Fallback:** https://sgiordano45.github.io/MountainsidePAL/ (redirects to the custom domain)
 - **Plan:** see `PLAN.md`
 - **Grades:** 3rd–8th, one team per grade, selected by tryout
 
@@ -43,5 +44,9 @@ Then open http://localhost:8000
 
 Push to `main`. GitHub Pages serves from the repo root.
 
-**All paths must be relative** (`./css/styles.css`), never root-absolute (`/css/styles.css`) —
-the site is served from `/MountainsidePAL/`, not the domain root.
+**All paths must be relative** (`./css/styles.css`), never root-absolute (`/css/styles.css`).
+This mattered on the `github.io/MountainsidePAL/` sub-path and costs nothing at the domain
+root — keep it, so the site keeps working from either URL.
+
+`CNAME` in the repo root holds the custom domain. Do not delete it: GitHub Pages reads it on
+every build, and losing it reverts the site to the github.io URL.
