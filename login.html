@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en" data-page="login.html" data-base="./">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign In · Mountainside PAL Basketball</title>
+  <meta name="robots" content="noindex">
+  <link rel="stylesheet" href="./css/styles.css">
+  <link rel="icon" href="./assets/favicon.png">
+</head>
+<body>
+
+<div id="site-header"></div>
+
+<main>
+  <div class="wrap">
+    <div id="mount"><p class="empty">Loading…</p></div>
+  </div>
+</main>
+
+<div id="site-footer"></div>
+
+<script type="module">
+import { isConfigured } from "./js/firebase-config.js";
+import { onAuthChange, signInWithGoogle, signOutUser, isAdmin, adminListReady, setupNoticeHTML }
+  from "./js/auth.js";
+
+const mount = document.getElementById("mount");
+
+if (!isConfigured) {
+  mount.innerHTML = setupNoticeHTML();
+} else {
+  onAuthChange(user => {
+    if (!user) {
+      mount.innerHTML = `
+        <div class="auth-gate">
+          <h1>Sign In</h1>
+          <p class="lede" style="margin:0 auto 1.6em">
+            Signing in lets you view team rosters. Coaches and administrators get
+            editing tools.
+          </p>
+          <button class="btn btn--primary btn--lg" id="in">Sign in with Google</button>
+        </div>`;
+      document.getElementById("in").onclick = () =>
+        signInWithGoogle().catch(e => alert(e.message));
+      return;
+    }
+
+    const admin = isAdmin(user);
+    mount.innerHTML = `
+      <div class="auth-gate">
+        <h1>Signed in</h1>
+        <p class="lede" style="margin:0 auto 1.2em">
+          ${user.displayName || user.email}
+        </p>
+        <div class="card" style="text-align:left; margin-bottom:20px">
+          <div class="field" style="margin-bottom:0">
+            <label>Your Firebase UID</label>
+            <input type="text" id="uid" readonly value="${user.uid}"
+                   onclick="this.select()" style="font-family:ui-monospace,monospace">
+            <span class="hint">
+              ${admin
+                ? "This account is on the admin list."
+                : "Paste this into ADMIN_UIDS in js/auth.js and into firestore.rules to grant yourself admin."}
+            </span>
+          </div>
+        </div>
+        ${!adminListReady ? `<div class="msg msg--warn" style="text-align:left">
+            <strong>No admin configured yet.</strong> Copy the UID above into
+            <code>js/auth.js</code> and <code>firestore.rules</code>, then publish the rules.
+          </div>` : ""}
+        ${admin ? '<p><a class="btn btn--primary" href="./admin/">Go to admin</a></p>' : ""}
+        <p><button class="btn btn--ghost" id="out">Sign out</button></p>
+      </div>`;
+    document.getElementById("out").onclick = () => signOutUser();
+  });
+}
+</script>
+<script type="module" src="./js/nav.js"></script>
+</body>
+</html>
