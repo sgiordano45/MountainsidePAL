@@ -11,12 +11,12 @@
  */
 
 export const firebaseConfig = {
-  apiKey:            "REPLACE_ME",
-  authDomain:        "REPLACE_ME.firebaseapp.com",
-  projectId:         "REPLACE_ME",
-  storageBucket:     "REPLACE_ME.appspot.com",
-  messagingSenderId: "REPLACE_ME",
-  appId:             "REPLACE_ME"
+    apiKey: "AIzaSyAYvt_SdFg_r9MGfC-nZa6LHJNI8rSQ-Ss",
+    authDomain: "mountainsidepal-travel.firebaseapp.com",
+    projectId: "mountainsidepal-travel",
+    storageBucket: "mountainsidepal-travel.firebasestorage.app",
+    messagingSenderId: "601992189567",
+    appId: "1:601992189567:web:3ea84767c9712db507d14a"
 };
 
 export const isConfigured = !Object.values(firebaseConfig).some(
