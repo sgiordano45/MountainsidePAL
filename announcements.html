@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Announcements · Mountainside PAL Basketball</title>
-  <meta name="robots" content="noindex">
+  <meta name="description" content="Weather cancellations, schedule changes and program news for Mountainside PAL Basketball.">
   <link rel="stylesheet" href="./css/styles.css">
   <link rel="icon" href="./assets/favicon.png">
 </head>
@@ -14,16 +14,98 @@
 <div id="alert-banner"></div>
 
 <main>
-  <div class="stub">
-    <div class="ico" aria-hidden="true">📣</div>
-    <h1>Announcements</h1>
-    <p class="lede" style="margin:0 auto 1.4em">Weather cancellations, schedule changes, uniform updates and registration reminders — with urgent items pushed to a banner across every page.</p>
-    <p style="color:var(--muted); font-size:.9rem">Building in Phase 4.</p>
-    <a class="btn btn--ghost" href="./index.html">Back to home</a>
-  </div>
+  <section class="hero" style="padding:40px 0 44px">
+    <div class="wrap">
+      <h1 style="margin-bottom:.2em">Announcements</h1>
+      <p style="margin-bottom:0">Cancellations, schedule changes and program news.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <div class="toolbar" id="toolbar">
+        <div class="field">
+          <label for="fTeam">Team</label>
+          <select id="fTeam"><option value="">Everything</option></select>
+        </div>
+      </div>
+      <div id="list"></div>
+    </div>
+  </section>
 </main>
 
 <div id="site-footer"></div>
+
+<script type="module">
+import { isConfigured, getFirebase } from "./js/firebase-config.js";
+import { GRADES, gradeLabel, teamIdForGrade } from "./js/events.js";
+
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const list = document.getElementById("list");
+let items = [];
+
+const sel = document.getElementById("fTeam");
+sel.add(new Option("Program-wide", "all"));
+for (const g of GRADES) sel.add(new Option(gradeLabel(g), teamIdForGrade(g)));
+sel.addEventListener("change", render);
+
+if (!isConfigured) {
+  document.getElementById("toolbar").classList.add("hidden");
+  list.innerHTML = `<p class="empty">
+    Announcements will appear here — weather cancellations, schedule changes,
+    uniform updates and registration reminders.</p>`;
+} else {
+  load();
+}
+
+async function load() {
+  list.innerHTML = `<p class="empty">Loading…</p>`;
+  try {
+    const fb = await getFirebase();
+    const { collection, getDocs } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+    const snap = await getDocs(collection(fb.db, "announcements"));
+    items = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (b.publishedAt?.toDate() ?? 0) - (a.publishedAt?.toDate() ?? 0));
+    render();
+  } catch (err) {
+    list.innerHTML = `<div class="msg msg--err">Couldn't load announcements: ${esc(err.message)}</div>`;
+  }
+}
+
+function render() {
+  const team = sel.value;
+  const now = new Date();
+  const shown = items
+    .filter(a => !team || a.teamId === team || (team !== "all" && a.teamId === "all"))
+    .filter(a => !a.expiresAt || a.expiresAt.toDate() > now);
+
+  if (!shown.length) {
+    list.innerHTML = `<p class="empty">Nothing posted${team ? " for that team" : ""} right now.</p>`;
+    return;
+  }
+
+  const pinned = shown.filter(a => a.pinned);
+  const rest   = shown.filter(a => !a.pinned);
+
+  list.innerHTML = [...pinned, ...rest].map(a => `
+    <article class="ann${a.level === "urgent" ? " ann--urgent" : ""}">
+      <div class="head">
+        <h3>${esc(a.title)}</h3>
+        ${a.level === "urgent" ? '<span class="badge badge--cancelled">Urgent</span>' : ""}
+        ${a.pinned ? '<span class="badge">Pinned</span>' : ""}
+        <span class="date">${a.publishedAt
+          ? a.publishedAt.toDate().toLocaleDateString("en-US",
+              { weekday: "short", month: "short", day: "numeric", year: "numeric" })
+          : ""}</span>
+      </div>
+      <p>${esc(a.body).replace(/\n/g, "<br>")}</p>
+      ${a.teamId && a.teamId !== "all"
+        ? `<p style="margin:10px 0 0"><a class="btn btn--ghost btn--sm"
+             href="./team.html?id=${esc(a.teamId)}">Team page</a></p>` : ""}
+    </article>`).join("");
+}
+</script>
 <script type="module" src="./js/nav.js"></script>
 </body>
 </html>

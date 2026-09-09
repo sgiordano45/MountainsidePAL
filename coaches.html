@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Coaches &amp; Staff · Mountainside PAL Basketball</title>
-  <meta name="robots" content="noindex">
+  <meta name="description" content="Coaches and staff for Mountainside PAL Basketball, grades 3 through 8.">
   <link rel="stylesheet" href="./css/styles.css">
   <link rel="icon" href="./assets/favicon.png">
 </head>
@@ -14,16 +14,108 @@
 <div id="alert-banner"></div>
 
 <main>
-  <div class="stub">
-    <div class="ico" aria-hidden="true">👔</div>
-    <h1>Coaches &amp; Staff</h1>
-    <p class="lede" style="margin:0 auto 1.4em">Coach names by team, contact buttons and short bios.</p>
-    <p style="color:var(--muted); font-size:.9rem">Building in Phase 4.</p>
-    <a class="btn btn--ghost" href="./index.html">Back to home</a>
-  </div>
+  <section class="hero" style="padding:40px 0 44px">
+    <div class="wrap">
+      <h1 style="margin-bottom:.2em">Coaches &amp; Staff</h1>
+      <p style="margin-bottom:0">Mountainside PAL Basketball is run entirely by volunteers.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <h2>Program Contacts</h2>
+      <div class="grid grid--2" id="contacts" style="margin-bottom:40px"></div>
+
+      <h2>Team Coaches</h2>
+      <div class="grid grid--3" id="coachGrid"></div>
+
+      <div class="notice" style="margin-top:30px">
+        <p style="margin:0">
+          <strong>Interested in coaching?</strong> PAL is always looking for volunteer coaches
+          and assistants. Reach out to the program contact above.
+        </p>
+      </div>
+    </div>
+  </section>
 </main>
 
 <div id="site-footer"></div>
+
+<script type="module">
+import { isConfigured, getFirebase } from "./js/firebase-config.js";
+import { SITE } from "./js/nav-config.js";
+import { GRADES, gradeLabel, teamIdForGrade, listTeams } from "./js/events.js";
+
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const initials = n => String(n || "?").split(/\s+/).map(w => w[0]).slice(0, 2).join("").toUpperCase();
+
+document.getElementById("contacts").innerHTML = SITE.contacts.map(c => `
+  <div class="card">
+    <div class="coachcard">
+      <div class="avatar">${esc(initials(c.name))}</div>
+      <div>
+        <strong>${esc(c.name)}</strong>
+        <div class="role">${esc(c.role)}</div>
+        <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap">
+          <a class="btn btn--ghost btn--sm" href="mailto:${esc(c.email)}">Email</a>
+          <a class="btn btn--ghost btn--sm" href="tel:${esc(c.tel)}">${esc(c.phone)}</a>
+        </div>
+      </div>
+    </div>
+  </div>`).join("");
+
+// Static shell: one card per grade, filled in from Firestore when available.
+const grid = document.getElementById("coachGrid");
+grid.innerHTML = GRADES.map(g => placeholder(g)).join("");
+if (isConfigured) hydrate();
+
+function placeholder(g) {
+  return `
+    <div class="card">
+      <h3 style="margin-bottom:4px">${gradeLabel(g)}</h3>
+      <p style="margin:0;color:var(--muted);font-size:.9rem">Coach to be announced.</p>
+      <p style="margin:12px 0 0">
+        <a class="btn btn--ghost btn--sm" href="./team.html?id=${teamIdForGrade(g)}">Team page</a>
+      </p>
+    </div>`;
+}
+
+async function hydrate() {
+  try {
+    const fb = await getFirebase();
+    const { collection, getDocs } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+    const [teams, snap] = await Promise.all([listTeams(), getDocs(collection(fb.db, "coaches"))]);
+    const coaches = Object.fromEntries(snap.docs.map(d => [d.id, d.data()]));
+    const byTeam = Object.fromEntries(teams.map(t => [t.id, t]));
+
+    grid.innerHTML = GRADES.map(g => {
+      const id = teamIdForGrade(g);
+      const list = (byTeam[id]?.coachUids || []).map(u => coaches[u]).filter(Boolean);
+      if (!list.length) return placeholder(g);
+      return `
+        <div class="card">
+          <h3 style="margin-bottom:12px">${esc(byTeam[id]?.name || gradeLabel(g))}</h3>
+          ${list.map(c => `
+            <div class="coachcard" style="margin-bottom:12px">
+              <div class="avatar">${esc(initials(c.displayName))}</div>
+              <div>
+                <strong>${esc(c.displayName || "Coach")}</strong>
+                <div class="role">${esc(c.role || "Head Coach")}</div>
+                ${c.bio ? `<p style="margin:6px 0 0;font-size:.87rem">${esc(c.bio)}</p>` : ""}
+                ${c.showEmail !== false && c.email
+                  ? `<a class="btn btn--ghost btn--sm" style="margin-top:8px" href="mailto:${esc(c.email)}">Email</a>`
+                  : ""}
+              </div>
+            </div>`).join("")}
+          <a class="btn btn--ghost btn--sm" href="./team.html?id=${id}">Team page</a>
+        </div>`;
+    }).join("");
+  } catch (err) {
+    console.warn("[coaches] live data unavailable:", err.message);
+  }
+}
+</script>
 <script type="module" src="./js/nav.js"></script>
 </body>
 </html>

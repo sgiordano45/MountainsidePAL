@@ -1,62 +1,49 @@
 rules_version = '2';
 
-// Mountainside PAL Basketball
-// Publish in Phase 3, once Google sign-in and the users collection exist.
-// Until then Firestore should stay in locked mode (deny all).
+// Mountainside PAL Basketball — Firestore security rules
+//
+// PHASE 2 (current): a single hardcoded admin UID. Everything is public to read
+//   except nothing yet; only the admin can write.
+// PHASE 3: replace isAdmin()/isCoachOf() with lookups against users/{uid},
+//   and tighten the roster subcollection to signed-in readers.
+//
+// Get your UID by signing in at login.html — it prints it on screen.
+// Keep this list in sync with ADMIN_UIDS in js/auth.js.
 
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.uid in [
+             'REPLACE_WITH_YOUR_UID'
+           ];
+    }
+
     function signedIn() {
       return request.auth != null;
     }
-    function userDoc() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
-    }
-    function isAdmin() {
-      return signedIn()
-        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        && userDoc().role == 'admin';
-    }
-    function isCoachOf(teamId) {
-      return signedIn()
-        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
-        && userDoc().role == 'coach'
-        && teamId in userDoc().teamIds;
-    }
 
     // ---- public read, admin write ----
-    match /config/{doc}       { allow read: if true; allow write: if isAdmin(); }
-    match /seasons/{doc}      { allow read: if true; allow write: if isAdmin(); }
-    match /locations/{doc}    { allow read: if true; allow write: if isAdmin(); }
-    match /coaches/{doc}      { allow read: if true; allow write: if isAdmin(); }
+    match /config/{doc}    { allow read: if true; allow write: if isAdmin(); }
+    match /seasons/{doc}   { allow read: if true; allow write: if isAdmin(); }
+    match /locations/{doc} { allow read: if true; allow write: if isAdmin(); }
+    match /coaches/{doc}   { allow read: if true; allow write: if isAdmin(); }
+    match /events/{doc}    { allow read: if true; allow write: if isAdmin(); }
+    match /announcements/{doc} { allow read: if true; allow write: if isAdmin(); }
 
-    // ---- teams: public doc, protected roster ----
+    // ---- teams: public doc, roster needs a sign-in (Phase 3 hardens this) ----
     match /teams/{teamId} {
       allow read: if true;
       allow write: if isAdmin();
 
       match /roster/{playerId} {
-        allow read:  if signedIn();                       // any Google account
-        allow write: if isAdmin() || isCoachOf(teamId);
+        allow read:  if signedIn();
+        allow write: if isAdmin();
       }
     }
 
-    // ---- events ----
-    match /events/{eventId} {
-      allow read: if true;
-      allow create: if isAdmin() || isCoachOf(request.resource.data.teamId);
-      allow update, delete: if isAdmin() || isCoachOf(resource.data.teamId);
-    }
-
-    // ---- announcements ----
-    match /announcements/{id} {
-      allow read: if true;
-      allow create: if isAdmin() || isCoachOf(request.resource.data.teamId);
-      allow update, delete: if isAdmin() || isCoachOf(resource.data.teamId);
-    }
-
-    // ---- users: roles are never self-assigned ----
+    // ---- users: created in Phase 3; roles are never self-assigned ----
     match /users/{uid} {
       allow read:  if isAdmin() || (signedIn() && request.auth.uid == uid);
       allow write: if isAdmin();

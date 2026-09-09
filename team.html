@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en" data-page="teams.html" data-base="./">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Team · Mountainside PAL Basketball</title>
+  <meta name="description" content="Team page for Mountainside PAL Basketball — coaches, schedule and roster.">
+  <link rel="stylesheet" href="./css/styles.css">
+  <link rel="icon" href="./assets/favicon.png">
+</head>
+<body>
+
+<div id="site-header"></div>
+<div id="alert-banner"></div>
+
+<main>
+  <section class="team-hero">
+    <div class="wrap">
+      <h1 id="teamName">Team</h1>
+      <p class="sub" id="teamSub">Mountainside PAL Basketball</p>
+      <nav class="team-switch" id="teamSwitch"></nav>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <div class="grid grid--2" style="align-items:start">
+
+        <div>
+          <h2>Schedule</h2>
+          <div id="sched"><p class="empty">Loading…</p></div>
+          <p style="margin-top:14px">
+            <a class="btn btn--ghost btn--sm" id="fullSched" href="./schedule.html">
+              Full schedule &amp; calendar
+            </a>
+          </p>
+        </div>
+
+        <div>
+          <h2>Coaches</h2>
+          <div id="coaches" class="card"><p style="margin:0;color:var(--muted)">Loading…</p></div>
+
+          <h2 style="margin-top:32px">Roster</h2>
+          <div id="roster"></div>
+
+          <h2 style="margin-top:32px">Team Announcements</h2>
+          <div id="ann"><p style="color:var(--muted);margin:0">Nothing posted yet.</p></div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+</main>
+
+<div id="site-footer"></div>
+
+<script type="module">
+import { isConfigured } from "./js/firebase-config.js";
+import { getFirebase } from "./js/firebase-config.js";
+import { onAuthChange } from "./js/auth.js";
+import {
+  GRADES, gradeLabel, teamIdForGrade, listTeams, listEvents, listLocations,
+  eventTitle, groupByDay, mapsUrl, parseLocal, formatTime
+} from "./js/events.js";
+
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const $ = id => document.getElementById(id);
+
+const params = new URLSearchParams(location.search);
+let teamId = params.get("id") || "";
+if (!/^grade-[3-8]$/.test(teamId)) teamId = teamIdForGrade(3);
+const grade = +teamId.split("-")[1];
+
+// static shell first
+document.title = `${gradeLabel(grade)} · Mountainside PAL Basketball`;
+$("teamName").textContent = gradeLabel(grade);
+$("fullSched").href = `./schedule.html?team=${teamId}`;
+$("teamSwitch").innerHTML = GRADES.map(g => {
+  const id = teamIdForGrade(g);
+  return `<a href="./team.html?id=${id}"${id === teamId ? ' aria-current="page"' : ""}>${g}${
+    g === 3 ? "rd" : "th"}</a>`;
+}).join("");
+
+if (!isConfigured) {
+  $("sched").innerHTML = `<p class="empty">The schedule appears here once the season is posted.</p>`;
+  $("coaches").innerHTML = `<p style="margin:0;color:var(--muted)">Coach information coming soon.</p>`;
+  renderLocked("Sign in to view the roster once it's posted.");
+} else {
+  hydrate();
+}
+
+async function hydrate() {
+  try {
+    const [teams, events, locs] = await Promise.all([listTeams(), listEvents(), listLocations()]);
+    const teamsById = Object.fromEntries(teams.map(t => [t.id, t]));
+    const locsById  = Object.fromEntries(locs.map(l => [l.id, l]));
+    const team = teamsById[teamId];
+
+    if (team?.name) $("teamName").textContent = team.name;
+    $("teamSub").textContent = team?.division
+      ? `${team.division} · Mountainside PAL Basketball`
+      : "Mountainside PAL Basketball";
+
+    renderSchedule(events, teamsById, locsById);
+    renderCoaches(team, teams);
+    renderAnnouncements();
+    watchRoster();
+  } catch (err) {
+    console.error(err);
+    $("sched").innerHTML = `<div class="msg msg--err">Couldn't load this team: ${esc(err.message)}</div>`;
+  }
+}
+
+function renderSchedule(events, teamsById, locsById) {
+  const now = Date.now();
+  const mine = events
+    .filter(e => e.teamId === teamId || e.teamId === "all")
+    .filter(e => { const d = parseLocal(e.startAt); return d && d.getTime() > now - 6 * 3600e3; })
+    .slice(0, 20);
+
+  if (!mine.length) {
+    $("sched").innerHTML = `<p class="empty">No upcoming events posted yet.</p>`;
+    return;
+  }
+
+  $("sched").innerHTML = groupByDay(mine).map(g => `
+    <div class="daygroup">
+      <h3>${g.date.toLocaleDateString("en-US",
+        { weekday: "long", month: "long", day: "numeric" })}</h3>
+      ${g.events.map(ev => {
+        const loc = locsById[ev.locationId];
+        const url = mapsUrl(loc);
+        const cancelled = ev.status === "cancelled";
+        return `
+        <div class="event${cancelled ? " event--cancelled" : ""}">
+          <div class="when">${ev.allDay ? "All day" : esc(formatTime(ev.startAt))}</div>
+          <div class="what">
+            <div class="title">${esc(eventTitle(ev, teamsById))}</div>
+            ${loc ? `<div class="meta">${url
+              ? `<a href="${url}" target="_blank" rel="noopener">${esc(loc.name)}</a>`
+              : esc(loc.name)}</div>` : ""}
+          </div>
+          <div class="side">
+            ${cancelled ? '<span class="badge badge--cancelled">Cancelled</span>' : ""}
+            <span class="badge badge--${esc(ev.type)}">${esc(ev.type)}</span>
+          </div>
+        </div>`;
+      }).join("")}
+    </div>`).join("");
+}
+
+async function renderCoaches(team) {
+  const uids = team?.coachUids || [];
+  if (!uids.length) {
+    $("coaches").innerHTML =
+      `<p style="margin:0;color:var(--muted)">Coaches for this team haven't been posted yet.</p>`;
+    return;
+  }
+  try {
+    const fb = await getFirebase();
+    const { doc, getDoc } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+    const docs = await Promise.all(uids.map(u => getDoc(doc(fb.db, "coaches", u))));
+    const coaches = docs.filter(d => d.exists()).map(d => d.data());
+    if (!coaches.length) throw new Error("none");
+    $("coaches").innerHTML = coaches.map(c => `
+      <div class="coachcard" style="margin-bottom:14px">
+        <div class="avatar">${esc(initials(c.displayName))}</div>
+        <div>
+          <strong>${esc(c.displayName || "Coach")}</strong>
+          <div class="role">${esc(c.role || "Coach")}</div>
+          ${c.showEmail !== false && c.email
+            ? `<a href="mailto:${esc(c.email)}" class="btn btn--ghost btn--sm" style="margin-top:7px">Email</a>`
+            : ""}
+        </div>
+      </div>`).join("");
+  } catch {
+    $("coaches").innerHTML =
+      `<p style="margin:0;color:var(--muted)">Coaches for this team haven't been posted yet.</p>`;
+  }
+}
+
+function initials(name) {
+  return String(name || "C").split(/\s+/).map(w => w[0]).slice(0, 2).join("").toUpperCase();
+}
+
+/** Roster is the one gated thing on the site. */
+function watchRoster() {
+  onAuthChange(async (user) => {
+    if (!user) return renderLocked();
+    $("roster").innerHTML = `<p style="color:var(--muted)">Loading roster…</p>`;
+    try {
+      const fb = await getFirebase();
+      const { collection, getDocs } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+      const snap = await getDocs(collection(fb.db, "teams", teamId, "roster"));
+      const players = snap.docs.map(d => d.data())
+        .sort((a, b) => (a.jersey ?? 999) - (b.jersey ?? 999) ||
+                        String(a.firstName).localeCompare(String(b.firstName)));
+      $("roster").innerHTML = players.length
+        ? `<ul class="roster">${players.map(p => `
+            <li><span class="num">${p.jersey ?? "–"}</span>
+              <span>${esc(p.firstName || "")} ${esc(p.lastInitial || (p.lastName ? p.lastName[0] + "." : ""))}</span>
+            </li>`).join("")}</ul>`
+        : `<p style="color:var(--muted)">The roster hasn't been posted yet.</p>`;
+    } catch (err) {
+      $("roster").innerHTML = `<p style="color:var(--muted)">
+        Roster unavailable right now${err.code === "permission-denied" ? "" : ` (${esc(err.message)})`}.</p>`;
+    }
+  });
+}
+
+function renderLocked(msg) {
+  $("roster").innerHTML = `
+    <div class="locked">
+      <div class="ico" aria-hidden="true">🔒</div>
+      <p style="margin:8px 0 14px">${esc(msg || "Rosters are visible to signed-in visitors only, so players' names stay out of public search results.")}</p>
+      <a class="btn btn--primary btn--sm" href="./login.html">Sign in with Google</a>
+    </div>`;
+}
+
+async function renderAnnouncements() {
+  try {
+    const fb = await getFirebase();
+    const { collection, getDocs, query, where } = await import("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js");
+    const snap = await getDocs(query(collection(fb.db, "announcements"),
+      where("teamId", "in", [teamId, "all"])));
+    const items = snap.docs.map(d => d.data())
+      .filter(a => !a.expiresAt || a.expiresAt.toDate() > new Date())
+      .sort((a, b) => (b.publishedAt?.toDate() ?? 0) - (a.publishedAt?.toDate() ?? 0))
+      .slice(0, 4);
+    if (!items.length) return;
+    $("ann").innerHTML = items.map(a => `
+      <div class="ann${a.level === "urgent" ? " ann--urgent" : ""}">
+        <div class="head"><h3>${esc(a.title)}</h3>
+          <span class="date">${a.publishedAt
+            ? a.publishedAt.toDate().toLocaleDateString("en-US", { month: "short", day: "numeric" })
+            : ""}</span></div>
+        <p>${esc(a.body)}</p>
+      </div>`).join("");
+  } catch { /* announcements are optional */ }
+}
+</script>
+<script type="module" src="./js/nav.js"></script>
+</body>
+</html>

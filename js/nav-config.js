@@ -42,8 +42,8 @@ export const NAV = [
   { href: "index.html",         label: "Home",          built: true  },
   { href: "register.html",      label: "Register",      built: true  },
   { href: "program.html",       label: "Program Info",  built: true  },
-  { href: "schedule.html",      label: "Schedule",      built: false },
-  { href: "teams.html",         label: "Teams",         built: false },
-  { href: "coaches.html",       label: "Coaches",       built: false },
-  { href: "announcements.html", label: "Announcements", built: false }
+  { href: "schedule.html",      label: "Schedule",      built: true  },
+  { href: "teams.html",         label: "Teams",         built: true  },
+  { href: "coaches.html",       label: "Coaches",       built: true  },
+  { href: "announcements.html", label: "Announcements", built: true  }
 ];

@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="en" data-page="admin" data-base="../">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Import Schedule · Mountainside PAL</title>
+  <meta name="robots" content="noindex">
+  <link rel="stylesheet" href="../css/styles.css">
+  <link rel="icon" href="../assets/favicon.png">
+</head>
+<body>
+
+<div id="site-header"></div>
+<div id="adminbar"></div>
+
+<main>
+  <div class="wrap">
+    <div id="gate"></div>
+    <div id="app" class="hidden">
+
+      <section class="section" style="padding-bottom:14px">
+        <h1>Import a Schedule</h1>
+        <p class="lede">
+          Paste the league's CSV (or upload the file). Nothing is written until you've
+          seen the preview and pressed Import.
+        </p>
+        <div id="msg"></div>
+      </section>
+
+      <!-- step 1 -->
+      <section class="section" style="padding:14px 0">
+        <div class="card">
+          <h3>1. What are these games?</h3>
+          <div class="form-grid">
+            <div class="field">
+              <label for="iTeam">Team</label>
+              <select id="iTeam"></select>
+              <span class="hint">Applied to every row, unless a team column is detected below.</span>
+            </div>
+            <div class="field">
+              <label for="iType">Event type</label>
+              <select id="iType"></select>
+            </div>
+            <div class="field">
+              <label for="iYear">Season starts in</label>
+              <input type="number" id="iYear" min="2020" max="2100" step="1">
+              <span class="hint">Used for rows whose date has no year. Sept–Dec use this year, Jan–Aug the next.</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- step 2 -->
+      <section class="section" style="padding:14px 0">
+        <div class="card">
+          <h3>2. Paste or upload</h3>
+          <div class="field">
+            <label for="iText">Schedule data</label>
+            <textarea id="iText" placeholder="date,opponent,location,time
+1/10/2027,Berkeley Heights,Deerfield School Gym,6:30 PM
+1/17/2027,New Providence,New Providence HS,5:00 PM"></textarea>
+            <span class="hint">Comma, tab, semicolon or pipe separated. A header row is detected automatically.</span>
+          </div>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center">
+            <input type="file" id="iFile" accept=".csv,.tsv,.txt" style="max-width:280px">
+            <button class="btn btn--primary" id="parseBtn">Preview</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- step 3 -->
+      <section class="section hidden" id="step3" style="padding:14px 0">
+        <div class="card">
+          <h3>3. Check the columns</h3>
+          <div class="form-grid" id="mapGrid"></div>
+        </div>
+      </section>
+
+      <!-- step 4 -->
+      <section class="section hidden" id="step4" style="padding:14px 0 60px">
+        <h3>4. Preview</h3>
+        <div id="summary"></div>
+        <div class="tablewrap" style="margin:14px 0">
+          <table class="data" id="preview"></table>
+        </div>
+        <label class="check" style="margin-bottom:12px">
+          <input type="checkbox" id="iSkipDupes" checked>
+          Skip rows that already exist (same team, same day, same opponent)
+        </label>
+        <div style="display:flex; gap:10px; flex-wrap:wrap">
+          <button class="btn btn--primary btn--lg" id="importBtn">Import</button>
+          <button class="btn btn--ghost" id="resetBtn">Start over</button>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</main>
+
+<div id="site-footer"></div>
+
+<script type="module">
+import { requireAdmin } from "../js/auth.js";
+import { renderAdminBar, say, esc } from "../js/admin-ui.js";
+import {
+  listTeams, listLocations, listEvents, bulkCreateEvents, saveLocation,
+  EVENT_TYPES, parseLocal
+} from "../js/events.js";
+import {
+  parseDelimited, detectColumns, looksLikeHeader,
+  parseDateParts, parseTimeParts, toLocalDate, parseHomeAway
+} from "../js/csv.js";
+
+const $ = id => document.getElementById(id);
+const FIELDS = [
+  ["date", "Date", true], ["time", "Time", false], ["opponent", "Opponent", false],
+  ["location", "Location", false], ["team", "Team / grade", false], ["homeaway", "Home/Away", false]
+];
+
+let USER = null, teams = [], locs = [], existing = [];
+let rows = [], header = [], mapping = {}, parsed = [];
+
+requireAdmin($("gate"), async (user) => {
+  USER = user;
+  renderAdminBar($("adminbar"), user, "import.html");
+  $("app").classList.remove("hidden");
+
+  for (const t of EVENT_TYPES) $("iType").add(new Option(t.label, t.id));
+  $("iType").value = "game";
+  $("iYear").value = new Date().getFullYear();
+
+  [teams, locs, existing] = await Promise.all([listTeams(), listLocations(), listEvents()]);
+  for (const t of teams) $("iTeam").add(new Option(t.name, t.id));
+  $("iTeam").add(new Option("All teams (program-wide)", "all"));
+  if (!teams.length) {
+    say($("msg"), 'No teams yet — run <strong>Initialise season data</strong> on the ' +
+      '<a href="./index.html">dashboard</a> first.', "warn");
+  }
+
+  $("iFile").onchange = async (e) => {
+    const f = e.target.files[0];
+    if (f) { $("iText").value = await f.text(); doParse(); }
+  };
+  $("parseBtn").onclick = doParse;
+  $("resetBtn").onclick = () => {
+    $("iText").value = ""; $("iFile").value = "";
+    $("step3").classList.add("hidden"); $("step4").classList.add("hidden");
+    $("msg").innerHTML = "";
+  };
+  $("importBtn").onclick = doImport;
+});
+
+function doParse() {
+  const text = $("iText").value.trim();
+  if (!text) return say($("msg"), "Paste some rows first.", "err");
+
+  const all = parseDelimited(text);
+  if (!all.length) return say($("msg"), "Couldn't read any rows from that.", "err");
+
+  const hasHeader = looksLikeHeader(all[0]);
+  header = hasHeader ? all[0] : all[0].map((_, i) => `Column ${i + 1}`);
+  rows   = hasHeader ? all.slice(1) : all;
+
+  if (!rows.length) return say($("msg"), "That looks like a header with no data rows.", "err");
+
+  mapping = detectColumns(hasHeader ? all[0] : []);
+  if (mapping.date === null) {
+    // fall back to the first column that parses as a date
+    const y = +$("iYear").value;
+    for (let c = 0; c < header.length; c++) {
+      if (parseDateParts(rows[0][c], y)) { mapping.date = c; break; }
+    }
+  }
+
+  renderMapping();
+  buildPreview();
+  $("step3").classList.remove("hidden");
+  $("step4").classList.remove("hidden");
+  $("msg").innerHTML = "";
+}
+
+function renderMapping() {
+  $("mapGrid").innerHTML = FIELDS.map(([key, label, req]) => `
+    <div class="field">
+      <label for="map_${key}">${label}${req ? "" : ' <span class="hint">optional</span>'}</label>
+      <select id="map_${key}" data-key="${key}">
+        <option value="">— not in file —</option>
+        ${header.map((h, i) =>
+          `<option value="${i}"${mapping[key] === i ? " selected" : ""}>${esc(h)}</option>`
+        ).join("")}
+      </select>
+    </div>`).join("");
+
+  $("mapGrid").querySelectorAll("select").forEach(sel => {
+    sel.onchange = () => {
+      mapping[sel.dataset.key] = sel.value === "" ? null : +sel.value;
+      buildPreview();
+    };
+  });
+}
+
+/** Match a location string to an existing location, loosely. */
+function matchLocation(text) {
+  const t = String(text || "").toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
+  if (!t) return null;
+  return locs.find(l => {
+    const n = l.name.toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
+    return n === t || n.includes(t) || t.includes(n);
+  }) || null;
+}
+
+function matchTeam(text) {
+  const t = String(text || "").toLowerCase();
+  const g = t.match(/(\d)/);
+  if (g) return teams.find(x => String(x.grade) === g[1]) || null;
+  return teams.find(x => t && x.name.toLowerCase().includes(t)) || null;
+}
+
+function seasonYear(monthIndex) {
+  const y = +$("iYear").value || new Date().getFullYear();
+  return monthIndex >= 8 ? y : y + 1;   // Sep–Dec = start year, Jan–Aug = next
+}
+
+function buildPreview() {
+  const type = $("iType").value;
+  const fallbackTeam = $("iTeam").value;
+  const cell = (r, key) => mapping[key] === null || mapping[key] === undefined
+    ? "" : (r[mapping[key]] ?? "");
+
+  parsed = rows.map((r, i) => {
+    const rawDate = cell(r, "date");
+    let dp = parseDateParts(rawDate, +$("iYear").value);
+    // If the row carries no year of its own, infer it from the season:
+    // Sep-Dec belong to the starting year, Jan-Aug to the one after.
+    const hasYear = /\d{4}/.test(rawDate) || /[-/]\d{2}\s*$/.test(rawDate);
+    if (dp && !hasYear) dp = { ...dp, y: seasonYear(dp.m) };
+    const tp = parseTimeParts(cell(r, "time"));
+    const start = toLocalDate(dp, tp);
+
+    const teamText = cell(r, "team");
+    const team = teamText ? matchTeam(teamText) : null;
+    const teamId = team ? team.id : fallbackTeam;
+
+    const locText = cell(r, "location");
+    const loc = matchLocation(locText);
+    const ha = parseHomeAway(cell(r, "homeaway"));
+
+    const errors = [];
+    if (!start) errors.push("unreadable date");
+    if (!teamId) errors.push("no team");
+
+    const dupe = start && teamId && existing.some(e => {
+      const d = parseLocal(e.startAt);
+      return d && e.teamId === teamId &&
+        d.getFullYear() === start.getFullYear() && d.getMonth() === start.getMonth() &&
+        d.getDate() === start.getDate() &&
+        (String(e.opponent || "").toLowerCase() === String(cell(r, "opponent")).toLowerCase());
+    });
+
+    return {
+      i, start, teamId, type,
+      opponent: cell(r, "opponent"),
+      locText, locationId: loc ? loc.id : null, newLocation: !loc && !!locText,
+      isHome: ha === null ? true : ha,
+      notes: "", errors, dupe,
+      timeMissing: !tp && !!cell(r, "time")
+    };
+  });
+
+  renderPreview();
+}
+
+function renderPreview() {
+  const teamName = id => teams.find(t => t.id === id)?.name || (id === "all" ? "All teams" : "—");
+  const good = parsed.filter(p => !p.errors.length);
+  const bad  = parsed.filter(p => p.errors.length);
+  const dupes = good.filter(p => p.dupe);
+  const newLocs = [...new Set(good.filter(p => p.newLocation).map(p => p.locText))];
+
+  const bits = [`<strong>${good.length}</strong> row${good.length === 1 ? "" : "s"} ready`];
+  if (dupes.length) bits.push(`<strong>${dupes.length}</strong> already on the schedule`);
+  if (bad.length)   bits.push(`<strong>${bad.length}</strong> with problems`);
+
+  $("summary").innerHTML =
+    `<div class="msg ${bad.length ? "msg--warn" : "msg--ok"}">${bits.join(" · ")}${
+      newLocs.length
+        ? `<br>New location${newLocs.length === 1 ? "" : "s"} to be created: ${
+            newLocs.map(n => `<strong>${esc(n)}</strong>`).join(", ")}`
+        : ""}</div>` +
+    (bad.length
+      ? `<div class="msg msg--err">Rows highlighted below will be skipped. Fix the column
+         mapping above, or correct those rows in your file and paste again.</div>`
+      : "");
+
+  $("preview").innerHTML = `
+    <thead><tr>
+      <th>#</th><th>Date</th><th>Time</th><th>Team</th>
+      <th>Opponent</th><th>H/A</th><th>Location</th><th>Status</th>
+    </tr></thead>
+    <tbody>${parsed.map(p => `
+      <tr class="${p.errors.length ? "bad" : ""}">
+        <td>${p.i + 1}</td>
+        <td>${p.start
+          ? p.start.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })
+          : `<em>${esc(rows[p.i][mapping.date] ?? "")}</em>`}</td>
+        <td>${p.start && !p.errors.length
+          ? p.start.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+          : ""}</td>
+        <td>${esc(teamName(p.teamId))}</td>
+        <td>${esc(p.opponent)}</td>
+        <td>${p.isHome ? "Home" : "Away"}</td>
+        <td>${esc(p.locText)}${p.newLocation ? ' <span class="badge">new</span>' : ""}</td>
+        <td>${p.errors.length
+          ? `<span class="badge badge--cancelled">${esc(p.errors.join(", "))}</span>`
+          : p.dupe ? '<span class="badge badge--deadline">duplicate</span>'
+                   : '<span class="badge badge--practice">ok</span>'}</td>
+      </tr>`).join("")}
+    </tbody>`;
+}
+
+async function doImport() {
+  const btn = $("importBtn");
+  btn.disabled = true;
+  try {
+    let ready = parsed.filter(p => !p.errors.length);
+    if ($("iSkipDupes").checked) ready = ready.filter(p => !p.dupe);
+    if (!ready.length) throw new Error("Nothing left to import.");
+
+    // create any new locations first, so events can reference them
+    const newNames = [...new Set(ready.filter(p => p.newLocation).map(p => p.locText))];
+    const created = {};
+    for (const name of newNames) {
+      created[name] = await saveLocation(null, { name, address: "", mapsUrl: "", notes: "" });
+    }
+
+    const docs = ready.map(p => ({
+      type: p.type,
+      teamId: p.teamId,
+      start: p.start,
+      opponent: p.opponent || "",
+      isHome: p.isHome,
+      locationId: p.locationId || created[p.locText] || null,
+      notes: p.notes || "",
+      allDay: false,
+      source: "import"
+    }));
+
+    const n = await bulkCreateEvents(docs, USER);
+    say($("msg"),
+      `Imported ${n} event${n === 1 ? "" : "s"}${
+        newNames.length ? ` and created ${newNames.length} location${newNames.length === 1 ? "" : "s"}` : ""
+      }. <a href="../schedule.html">View the schedule</a>` +
+      (newNames.length
+        ? ` — add street addresses to the new locations on the <a href="./index.html">dashboard</a> so map links work.`
+        : ""));
+
+    existing = await listEvents();
+    locs = await listLocations();
+    buildPreview();
+  } catch (err) {
+    say($("msg"), `Import failed: ${esc(err.message)}`, "err");
+  }
+  btn.disabled = false;
+}
+</script>
+<script type="module" src="../js/nav.js"></script>
+</body>
+</html>

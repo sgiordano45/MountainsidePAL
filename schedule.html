@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Schedule · Mountainside PAL Basketball</title>
-  <meta name="robots" content="noindex">
+  <meta name="description" content="Game, practice and tournament schedule for Mountainside PAL Basketball, grades 3 through 8.">
   <link rel="stylesheet" href="./css/styles.css">
   <link rel="icon" href="./assets/favicon.png">
 </head>
@@ -14,16 +14,214 @@
 <div id="alert-banner"></div>
 
 <main>
-  <div class="stub">
-    <div class="ico" aria-hidden="true">📅</div>
-    <h1>Schedule</h1>
-    <p class="lede" style="margin:0 auto 1.4em">Games, practices and tournaments — filterable by team, with a month calendar view and Google Maps links for every location.</p>
-    <p style="color:var(--muted); font-size:.9rem">Building in Phase 2.</p>
-    <a class="btn btn--ghost" href="./index.html">Back to home</a>
-  </div>
+  <section class="hero" style="padding:40px 0 44px">
+    <div class="wrap">
+      <h1 style="margin-bottom:.2em">Schedule</h1>
+      <p style="margin-bottom:0">Games, practices and tournaments for every grade.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+
+      <div class="toolbar" id="toolbar">
+        <div class="field">
+          <label for="fTeam">Team</label>
+          <select id="fTeam"><option value="">All teams</option></select>
+        </div>
+        <div class="field">
+          <label for="fType">Type</label>
+          <select id="fType"><option value="">All types</option></select>
+        </div>
+        <div class="field">
+          <label for="fWhen">Show</label>
+          <select id="fWhen">
+            <option value="upcoming">Upcoming</option>
+            <option value="all">Whole season</option>
+            <option value="past">Past</option>
+          </select>
+        </div>
+        <div class="spacer"></div>
+        <div class="field" style="flex:0 0 auto">
+          <label>View</label>
+          <div class="viewtoggle">
+            <button id="vList" aria-pressed="true">List</button>
+            <button id="vCal"  aria-pressed="false">Calendar</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="content"><p class="empty">Loading schedule…</p></div>
+
+    </div>
+  </section>
 </main>
 
 <div id="site-footer"></div>
+
+<script type="module">
+import { isConfigured } from "./js/firebase-config.js";
+import { setupNoticeHTML } from "./js/auth.js";
+import {
+  listEvents, listTeams, listLocations, EVENT_TYPES,
+  eventTitle, groupByDay, mapsUrl, parseLocal, formatTime
+} from "./js/events.js";
+import { renderCalendar } from "./js/calendar.js";
+
+const content = document.getElementById("content");
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+if (!isConfigured) {
+  document.getElementById("toolbar").classList.add("hidden");
+  content.innerHTML = setupNoticeHTML();
+} else {
+  init();
+}
+
+const state = {
+  team: "", type: "", when: "upcoming", view: "list",
+  month: new Date(), events: [], teamsById: {}, locsById: {}
+};
+
+async function init() {
+  readUrl();
+  const [events, teams, locs] = await Promise.all([
+    listEvents(), listTeams(), listLocations()
+  ]).catch(err => { fail(err); return [[], [], []]; });
+
+  state.events = events;
+  state.teamsById = Object.fromEntries(teams.map(t => [t.id, t]));
+  state.locsById  = Object.fromEntries(locs.map(l => [l.id, l]));
+
+  const fTeam = document.getElementById("fTeam");
+  for (const t of teams) fTeam.add(new Option(t.name, t.id));
+  fTeam.add(new Option("Program-wide", "all"));
+  const fType = document.getElementById("fType");
+  for (const t of EVENT_TYPES) fType.add(new Option(t.label, t.id));
+
+  applyState();
+  for (const [id, key] of [["fTeam","team"],["fType","type"],["fWhen","when"]]) {
+    document.getElementById(id).addEventListener("change", e => {
+      state[key] = e.target.value; writeUrl(); render();
+    });
+  }
+  document.getElementById("vList").onclick = () => setView("list");
+  document.getElementById("vCal").onclick  = () => setView("calendar");
+
+  render();
+}
+
+function setView(v) {
+  state.view = v;
+  document.getElementById("vList").setAttribute("aria-pressed", String(v === "list"));
+  document.getElementById("vCal").setAttribute("aria-pressed", String(v === "calendar"));
+  writeUrl(); render();
+}
+
+function readUrl() {
+  const p = new URLSearchParams(location.search);
+  state.team = p.get("team") || "";
+  state.type = p.get("type") || "";
+  state.when = p.get("when") || "upcoming";
+  state.view = p.get("view") === "calendar" ? "calendar" : "list";
+}
+
+function applyState() {
+  document.getElementById("fTeam").value = state.team;
+  document.getElementById("fType").value = state.type;
+  document.getElementById("fWhen").value = state.when;
+  document.getElementById("vList").setAttribute("aria-pressed", String(state.view === "list"));
+  document.getElementById("vCal").setAttribute("aria-pressed", String(state.view === "calendar"));
+}
+
+function writeUrl() {
+  const p = new URLSearchParams();
+  if (state.team) p.set("team", state.team);
+  if (state.type) p.set("type", state.type);
+  if (state.when !== "upcoming") p.set("when", state.when);
+  if (state.view !== "list") p.set("view", state.view);
+  const qs = p.toString();
+  history.replaceState(null, "", qs ? `?${qs}` : location.pathname);
+}
+
+function filtered({ ignoreWhen = false } = {}) {
+  const now = Date.now();
+  return state.events.filter(ev => {
+    if (state.team && ev.teamId !== state.team && ev.teamId !== "all") return false;
+    if (state.type && ev.type !== state.type) return false;
+    if (!ignoreWhen) {
+      const d = parseLocal(ev.startAt);
+      if (state.when === "upcoming" && d && d.getTime() < now - 6 * 3600e3) return false;
+      if (state.when === "past"     && d && d.getTime() >= now) return false;
+    }
+    return true;
+  });
+}
+
+function render() {
+  if (state.view === "calendar") {
+    const evs = filtered({ ignoreWhen: true });
+    renderCalendar(content, evs, state.teamsById, state.month, m => {
+      state.month = m; render();
+    });
+    return;
+  }
+  renderList(filtered());
+}
+
+function renderList(evs) {
+  if (!evs.length) {
+    content.innerHTML = `<p class="empty">
+      No events match these filters yet.${state.when === "upcoming"
+        ? " Try “Whole season”." : ""}</p>`;
+    return;
+  }
+
+  const groups = groupByDay(evs);
+  if (state.when === "past") groups.reverse();
+
+  content.innerHTML = groups.map(g => `
+    <div class="daygroup">
+      <h3>${g.date.toLocaleDateString("en-US",
+        { weekday: "long", month: "long", day: "numeric", year: "numeric" })}</h3>
+      ${g.events.map(ev => row(ev)).join("")}
+    </div>`).join("");
+}
+
+function row(ev) {
+  const loc = state.locsById[ev.locationId];
+  const url = mapsUrl(loc);
+  const cancelled = ev.status === "cancelled";
+  const postponed = ev.status === "postponed";
+
+  const bits = [];
+  if (loc) bits.push(url
+    ? `<a href="${url}" target="_blank" rel="noopener">${esc(loc.name)}</a>`
+    : esc(loc.name));
+  if (ev.notes) bits.push(esc(ev.notes));
+
+  return `
+    <div class="event${cancelled ? " event--cancelled" : ""}">
+      <div class="when">${ev.allDay ? "All day" : esc(formatTime(ev.startAt))}</div>
+      <div class="what">
+        <div class="title">${esc(eventTitle(ev, state.teamsById))}</div>
+        ${bits.length ? `<div class="meta">${bits.join(" · ")}</div>` : ""}
+      </div>
+      <div class="side">
+        ${cancelled ? '<span class="badge badge--cancelled">Cancelled</span>' : ""}
+        ${postponed ? '<span class="badge badge--deadline">Postponed</span>' : ""}
+        <span class="badge badge--${esc(ev.type)}">${esc(ev.type)}</span>
+      </div>
+    </div>`;
+}
+
+function fail(err) {
+  console.error(err);
+  content.innerHTML = `<div class="msg msg--err">
+    Couldn't load the schedule: ${esc(err.message)}</div>`;
+}
+</script>
 <script type="module" src="./js/nav.js"></script>
 </body>
 </html>

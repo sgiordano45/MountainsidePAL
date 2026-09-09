@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Teams · Mountainside PAL Basketball</title>
-  <meta name="robots" content="noindex">
+  <meta name="description" content="Mountainside PAL Basketball teams, grades 3 through 8 — coaches, schedules and rosters.">
   <link rel="stylesheet" href="./css/styles.css">
   <link rel="icon" href="./assets/favicon.png">
 </head>
@@ -14,16 +14,75 @@
 <div id="alert-banner"></div>
 
 <main>
-  <div class="stub">
-    <div class="ico" aria-hidden="true">🏀</div>
-    <h1>Teams</h1>
-    <p class="lede" style="margin:0 auto 1.4em">One page per grade with coaches, team schedule and roster. Rosters require a sign-in so players' names stay out of search results.</p>
-    <p style="color:var(--muted); font-size:.9rem">Building in Phase 3.</p>
-    <a class="btn btn--ghost" href="./index.html">Back to home</a>
-  </div>
+  <section class="hero" style="padding:40px 0 44px">
+    <div class="wrap">
+      <h1 style="margin-bottom:.2em">Teams</h1>
+      <p style="margin-bottom:0">One team per grade, 3rd through 8th. Pick a team for its
+        coaches, schedule and roster.</p>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <div class="grid grid--3" id="teamGrid"></div>
+      <p style="margin-top:26px; color:var(--muted); font-size:.9rem">
+        Rosters require a sign-in — that keeps players' names out of public search results.
+        <a href="./login.html">Sign in</a> with any Google account to view them.
+      </p>
+    </div>
+  </section>
 </main>
 
 <div id="site-footer"></div>
+
+<script type="module">
+import { isConfigured } from "./js/firebase-config.js";
+import { GRADES, gradeLabel, teamIdForGrade, listTeams, listEvents, parseLocal }
+  from "./js/events.js";
+
+const grid = document.getElementById("teamGrid");
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+// Render the six grades immediately from static data — the page is useful with or
+// without a backend. Live details fill in afterwards if Firestore is connected.
+grid.innerHTML = GRADES.map(g => card(g, null, null)).join("");
+
+if (isConfigured) hydrate();
+
+async function hydrate() {
+  try {
+    const [teams, events] = await Promise.all([listTeams(), listEvents()]);
+    const byId = Object.fromEntries(teams.map(t => [t.id, t]));
+    const now = Date.now();
+    const next = {};
+    for (const ev of events) {
+      const d = parseLocal(ev.startAt);
+      if (!d || d.getTime() < now || ev.status === "cancelled") continue;
+      if (!next[ev.teamId] || d < next[ev.teamId].d) next[ev.teamId] = { d, ev };
+    }
+    grid.innerHTML = GRADES.map(g =>
+      card(g, byId[teamIdForGrade(g)], next[teamIdForGrade(g)])
+    ).join("");
+  } catch (err) {
+    console.warn("[teams] live data unavailable:", err.message);
+  }
+}
+
+function card(grade, team, next) {
+  const id = teamIdForGrade(grade);
+  const sub = next
+    ? `Next: ${next.d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}`
+    : (team ? "Schedule coming soon" : "Team page");
+  return `
+    <a class="teamcard" href="./team.html?id=${id}">
+      <div class="grade">${grade}<span style="font-size:1rem">${
+        grade === 3 ? "rd" : "th"}</span></div>
+      <div class="name">${esc(team?.name || gradeLabel(grade))}</div>
+      <div class="sub">${esc(sub)}</div>
+    </a>`;
+}
+</script>
 <script type="module" src="./js/nav.js"></script>
 </body>
 </html>

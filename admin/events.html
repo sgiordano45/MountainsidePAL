@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en" data-page="admin" data-base="../">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Schedule Editor · Mountainside PAL</title>
+  <meta name="robots" content="noindex">
+  <link rel="stylesheet" href="../css/styles.css">
+  <link rel="icon" href="../assets/favicon.png">
+</head>
+<body>
+
+<div id="site-header"></div>
+<div id="adminbar"></div>
+
+<main>
+  <div class="wrap">
+    <div id="gate"></div>
+    <div id="app" class="hidden">
+
+      <section class="section" style="padding-bottom:16px">
+        <h1 id="formTitle">Add an Event</h1>
+        <div id="msg"></div>
+
+        <div class="card">
+          <div class="form-grid">
+            <div class="field">
+              <label for="fType">Type</label>
+              <select id="fType"></select>
+            </div>
+            <div class="field">
+              <label for="fTeam">Team</label>
+              <select id="fTeam"></select>
+            </div>
+            <div class="field">
+              <label for="fDate">Date</label>
+              <input type="date" id="fDate">
+            </div>
+            <div class="field">
+              <label for="fTime">Start time</label>
+              <input type="time" id="fTime" value="18:00">
+            </div>
+            <div class="field">
+              <label for="fLoc">Location</label>
+              <select id="fLoc"><option value="">— none —</option></select>
+            </div>
+            <div class="field" id="oppWrap">
+              <label for="fOpp">Opponent</label>
+              <input type="text" id="fOpp" placeholder="Berkeley Heights">
+            </div>
+          </div>
+
+          <div class="form-grid">
+            <div class="field">
+              <label for="fNotes">Notes <span class="hint">optional</span></label>
+              <input type="text" id="fNotes" placeholder="Bring both jerseys">
+            </div>
+            <div class="field" id="homeWrap">
+              <label>Home or away</label>
+              <select id="fHome">
+                <option value="true">Home</option>
+                <option value="false">Away</option>
+              </select>
+            </div>
+          </div>
+
+          <div id="repeatWrap" style="border-top:1px solid var(--line); margin-top:6px; padding-top:14px">
+            <label class="check" style="margin-bottom:10px">
+              <input type="checkbox" id="fRepeat"> Repeat weekly until…
+            </label>
+            <div class="field hidden" id="repeatDateWrap" style="max-width:240px">
+              <label for="fRepeatUntil">Last occurrence</label>
+              <input type="date" id="fRepeatUntil">
+              <span class="hint" id="repeatCount"></span>
+            </div>
+          </div>
+
+          <div style="margin-top:16px; display:flex; gap:10px; flex-wrap:wrap">
+            <button class="btn btn--primary" id="saveBtn">Add event</button>
+            <button class="btn btn--ghost hidden" id="cancelEdit">Cancel edit</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" style="padding-top:16px">
+        <div class="toolbar">
+          <div class="field">
+            <label for="qTeam">Team</label>
+            <select id="qTeam"><option value="">All teams</option></select>
+          </div>
+          <div class="field">
+            <label for="qType">Type</label>
+            <select id="qType"><option value="">All types</option></select>
+          </div>
+          <div class="field">
+            <label for="qWhen">Show</label>
+            <select id="qWhen">
+              <option value="upcoming">Upcoming</option>
+              <option value="all">Whole season</option>
+              <option value="past">Past</option>
+            </select>
+          </div>
+        </div>
+        <div id="list"><p class="empty">Loading…</p></div>
+      </section>
+
+    </div>
+  </div>
+</main>
+
+<div id="site-footer"></div>
+
+<script type="module">
+import { requireAdmin } from "../js/auth.js";
+import { renderAdminBar, say, esc, dateInputValue, timeInputValue, localDateFrom }
+  from "../js/admin-ui.js";
+import {
+  listEvents, listTeams, listLocations, createEvent, updateEvent, deleteEvent,
+  bulkCreateEvents, EVENT_TYPES, eventTitle, groupByDay, parseLocal, formatTime
+} from "../js/events.js";
+
+let USER = null, events = [], teams = [], locs = [], teamsById = {}, locsById = {};
+let editingId = null;
+
+const $ = id => document.getElementById(id);
+
+requireAdmin($("gate"), async (user) => {
+  USER = user;
+  renderAdminBar($("adminbar"), user, "events.html");
+  $("app").classList.remove("hidden");
+
+  for (const t of EVENT_TYPES) {
+    $("fType").add(new Option(t.label, t.id));
+    $("qType").add(new Option(t.label, t.id));
+  }
+  $("fDate").value = dateInputValue(new Date());
+
+  await load();
+
+  $("fType").addEventListener("change", syncTypeFields);
+  syncTypeFields();
+
+  $("fRepeat").addEventListener("change", e => {
+    $("repeatDateWrap").classList.toggle("hidden", !e.target.checked);
+    updateRepeatCount();
+  });
+  for (const id of ["fDate", "fRepeatUntil"]) $(id).addEventListener("change", updateRepeatCount);
+
+  $("saveBtn").onclick   = save;
+  $("cancelEdit").onclick = clearForm;
+  for (const id of ["qTeam", "qType", "qWhen"]) $(id).addEventListener("change", renderList);
+});
+
+async function load() {
+  [events, teams, locs] = await Promise.all([listEvents(), listTeams(), listLocations()]);
+  teamsById = Object.fromEntries(teams.map(t => [t.id, t]));
+  locsById  = Object.fromEntries(locs.map(l => [l.id, l]));
+
+  const fTeam = $("fTeam"), qTeam = $("qTeam"), fLoc = $("fLoc");
+  fTeam.innerHTML = ""; fLoc.length = 1;
+  qTeam.length = 1;
+  for (const t of teams) { fTeam.add(new Option(t.name, t.id)); qTeam.add(new Option(t.name, t.id)); }
+  fTeam.add(new Option("All teams (program-wide)", "all"));
+  qTeam.add(new Option("Program-wide", "all"));
+  for (const l of locs) fLoc.add(new Option(l.name, l.id));
+
+  if (!teams.length) {
+    say($("msg"), 'No teams yet — run <strong>Initialise season data</strong> on the ' +
+      '<a href="./index.html">dashboard</a> first.', "warn");
+  }
+  renderList();
+}
+
+function syncTypeFields() {
+  const t = $("fType").value;
+  const isVs = t === "game" || t === "tournament";
+  $("oppWrap").classList.toggle("hidden", !isVs);
+  $("homeWrap").classList.toggle("hidden", !isVs);
+  $("repeatWrap").classList.toggle("hidden", t === "deadline");
+}
+
+function updateRepeatCount() {
+  const hint = $("repeatCount");
+  if (!$("fRepeat").checked) { hint.textContent = ""; return; }
+  const start = localDateFrom($("fDate").value, "12:00");
+  const until = localDateFrom($("fRepeatUntil").value, "12:00");
+  if (!start || !until || until < start) { hint.textContent = ""; return; }
+  const n = Math.floor((until - start) / (7 * 86400e3)) + 1;
+  hint.textContent = `Creates ${n} event${n === 1 ? "" : "s"}, one per week.`;
+}
+
+function readForm() {
+  const start = localDateFrom($("fDate").value, $("fTime").value);
+  if (!start) throw new Error("Pick a date.");
+  const type = $("fType").value;
+  const isVs = type === "game" || type === "tournament";
+  return {
+    type,
+    teamId: $("fTeam").value,
+    start,
+    opponent: isVs ? $("fOpp").value.trim() : "",
+    isHome: isVs ? $("fHome").value === "true" : null,
+    locationId: $("fLoc").value || null,
+    notes: $("fNotes").value.trim(),
+    allDay: type === "deadline"
+  };
+}
+
+async function save() {
+  const btn = $("saveBtn");
+  btn.disabled = true;
+  try {
+    const base = readForm();
+
+    if (editingId) {
+      await updateEvent(editingId, base, USER);
+      say($("msg"), "Event updated.");
+    } else if ($("fRepeat").checked && $("fRepeatUntil").value) {
+      const until = localDateFrom($("fRepeatUntil").value, "23:59");
+      const rows = [];
+      for (let d = new Date(base.start); d <= until; d.setDate(d.getDate() + 7)) {
+        rows.push({ ...base, start: new Date(d) });
+      }
+      if (!rows.length) throw new Error("That end date is before the start date.");
+      const n = await bulkCreateEvents(rows, USER);
+      say($("msg"), `Created ${n} weekly events.`);
+    } else {
+      await createEvent(base, USER);
+      say($("msg"), "Event added.");
+    }
+
+    clearForm();
+    await load();
+  } catch (err) {
+    say($("msg"), `Failed: ${esc(err.message)}`, "err");
+  }
+  btn.disabled = false;
+}
+
+function clearForm() {
+  editingId = null;
+  $("formTitle").textContent = "Add an Event";
+  $("saveBtn").textContent = "Add event";
+  $("cancelEdit").classList.add("hidden");
+  $("fOpp").value = ""; $("fNotes").value = "";
+  $("fRepeat").checked = false;
+  $("repeatDateWrap").classList.add("hidden");
+  $("repeatWrap").classList.remove("hidden");
+  updateRepeatCount(); syncTypeFields();
+}
+
+function loadIntoForm(ev, asCopy) {
+  const d = parseLocal(ev.startAt);
+  $("fType").value = ev.type;
+  $("fTeam").value = ev.teamId;
+  $("fDate").value = dateInputValue(d);
+  $("fTime").value = timeInputValue(d);
+  $("fLoc").value  = ev.locationId || "";
+  $("fOpp").value  = ev.opponent || "";
+  $("fHome").value = String(ev.isHome !== false);
+  $("fNotes").value = ev.notes || "";
+  syncTypeFields();
+
+  editingId = asCopy ? null : ev.id;
+  $("formTitle").textContent = asCopy ? "Duplicate Event" : "Edit Event";
+  $("saveBtn").textContent   = asCopy ? "Add event" : "Save changes";
+  $("cancelEdit").classList.toggle("hidden", asCopy && !editingId ? true : false);
+  $("repeatWrap").classList.toggle("hidden", !!editingId);
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function filtered() {
+  const now = Date.now();
+  const team = $("qTeam").value, type = $("qType").value, when = $("qWhen").value;
+  return events.filter(ev => {
+    if (team && ev.teamId !== team) return false;
+    if (type && ev.type !== type) return false;
+    const d = parseLocal(ev.startAt);
+    if (when === "upcoming" && d && d.getTime() < now - 6 * 3600e3) return false;
+    if (when === "past"     && d && d.getTime() >= now) return false;
+    return true;
+  });
+}
+
+function renderList() {
+  const evs = filtered();
+  const list = $("list");
+  if (!evs.length) { list.innerHTML = `<p class="empty">No events match.</p>`; return; }
+
+  const groups = groupByDay(evs);
+  if ($("qWhen").value === "past") groups.reverse();
+
+  list.innerHTML = groups.map(g => `
+    <div class="daygroup">
+      <h3>${g.date.toLocaleDateString("en-US",
+        { weekday: "long", month: "long", day: "numeric", year: "numeric" })}</h3>
+      ${g.events.map(ev => {
+        const cancelled = ev.status === "cancelled";
+        const loc = locsById[ev.locationId];
+        return `
+        <div class="event${cancelled ? " event--cancelled" : ""}">
+          <div class="when">${ev.allDay ? "All day" : esc(formatTime(ev.startAt))}</div>
+          <div class="what">
+            <div class="title">${esc(eventTitle(ev, teamsById))}</div>
+            <div class="meta">
+              <span class="badge badge--${esc(ev.type)}">${esc(ev.type)}</span>
+              ${loc ? " · " + esc(loc.name) : ""}
+              ${ev.source === "import" ? " · imported" : ""}
+            </div>
+          </div>
+          <div class="side">
+            <button class="btn btn--ghost btn--sm" data-act="edit" data-id="${ev.id}">Edit</button>
+            <button class="btn btn--ghost btn--sm" data-act="copy" data-id="${ev.id}">Duplicate</button>
+            <button class="btn btn--ghost btn--sm" data-act="toggle" data-id="${ev.id}">
+              ${cancelled ? "Restore" : "Cancel"}
+            </button>
+            <button class="btn btn--danger btn--sm" data-act="del" data-id="${ev.id}">Delete</button>
+          </div>
+        </div>`;
+      }).join("")}
+    </div>`).join("");
+
+  list.querySelectorAll("button[data-act]").forEach(b => {
+    b.onclick = () => act(b.dataset.act, b.dataset.id);
+  });
+}
+
+async function act(action, id) {
+  const ev = events.find(e => e.id === id);
+  if (!ev) return;
+  try {
+    if (action === "edit") return loadIntoForm(ev, false);
+    if (action === "copy") return loadIntoForm(ev, true);
+
+    if (action === "toggle") {
+      const next = ev.status === "cancelled" ? "scheduled" : "cancelled";
+      await updateEvent(id, { status: next }, USER);
+      say($("msg"), next === "cancelled"
+        ? "Event marked cancelled — it stays visible, struck through, so families see it."
+        : "Event restored.");
+    }
+
+    if (action === "del") {
+      if (!confirm("Delete this event permanently?\n\nCancelling is usually better — a cancelled event stays visible so families know it was called off.")) return;
+      await deleteEvent(id);
+      say($("msg"), "Event deleted.");
+    }
+    await load();
+  } catch (err) {
+    say($("msg"), `Failed: ${esc(err.message)}`, "err");
+  }
+}
+</script>
+<script type="module" src="../js/nav.js"></script>
+</body>
+</html>

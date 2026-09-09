@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en" data-page="admin" data-base="../">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin · Mountainside PAL Basketball</title>
+  <meta name="robots" content="noindex">
+  <link rel="stylesheet" href="../css/styles.css">
+  <link rel="icon" href="../assets/favicon.png">
+</head>
+<body>
+
+<div id="site-header"></div>
+<div id="adminbar"></div>
+
+<main>
+  <div class="wrap">
+    <div id="gate"></div>
+    <div id="app" class="hidden">
+
+      <section class="section" style="padding-bottom:20px">
+        <h1>Admin Dashboard</h1>
+        <div id="msg"></div>
+
+        <div class="grid grid--3" style="margin-top:20px">
+          <div class="card"><h3 id="cTeams">–</h3><p style="margin:0;color:var(--muted)">Teams</p></div>
+          <div class="card"><h3 id="cEvents">–</h3><p style="margin:0;color:var(--muted)">Events this season</p></div>
+          <div class="card"><h3 id="cLocs">–</h3><p style="margin:0;color:var(--muted)">Locations</p></div>
+        </div>
+
+        <p style="margin-top:22px">
+          <a class="btn btn--primary" href="./events.html">Schedule editor</a>
+          <a class="btn btn--ghost" href="./import.html">Import a schedule</a>
+        </p>
+      </section>
+
+      <section class="section" style="padding-top:20px">
+        <div class="grid grid--2">
+
+          <div class="card">
+            <h3>Season Setup</h3>
+            <p>
+              Creates the six grade teams and the <code>config/site</code> document if they
+              don't already exist. Safe to run more than once — it never overwrites.
+            </p>
+            <button class="btn btn--primary" id="seedBtn">Initialise season data</button>
+            <div id="seedMsg"></div>
+          </div>
+
+          <div class="card">
+            <h3>Locations</h3>
+            <p style="color:var(--muted);font-size:.9rem">
+              Add each gym once. Events reference a location, so the address and map link
+              stay correct everywhere.
+            </p>
+            <div class="form-grid">
+              <div class="field">
+                <label for="locName">Name</label>
+                <input type="text" id="locName" placeholder="Deerfield School Gym">
+              </div>
+              <div class="field">
+                <label for="locAddr">Address</label>
+                <input type="text" id="locAddr" placeholder="302 Central Ave, Mountainside NJ">
+              </div>
+            </div>
+            <button class="btn btn--ghost btn--sm" id="locAdd">Add location</button>
+            <div id="locMsg"></div>
+            <div id="locList" style="margin-top:14px"></div>
+          </div>
+
+        </div>
+      </section>
+
+    </div>
+  </div>
+</main>
+
+<div id="site-footer"></div>
+
+<script type="module">
+import { requireAdmin } from "../js/auth.js";
+import { renderAdminBar, say, esc } from "../js/admin-ui.js";
+import { listTeams, listEvents, listLocations, seedSeason, saveLocation, mapsUrl }
+  from "../js/events.js";
+
+const gate = document.getElementById("gate");
+const app  = document.getElementById("app");
+
+requireAdmin(gate, async (user) => {
+  renderAdminBar(document.getElementById("adminbar"), user, "index.html");
+  app.classList.remove("hidden");
+  await refresh();
+
+  document.getElementById("seedBtn").onclick = async (e) => {
+    e.target.disabled = true;
+    try {
+      const n = await seedSeason(user);
+      say(document.getElementById("seedMsg"),
+        n ? `Created ${n} document${n === 1 ? "" : "s"}.` : "Everything already exists — nothing to do.");
+      await refresh();
+    } catch (err) {
+      say(document.getElementById("seedMsg"), `Failed: ${esc(err.message)}`, "err");
+    }
+    e.target.disabled = false;
+  };
+
+  document.getElementById("locAdd").onclick = async () => {
+    const name = document.getElementById("locName").value.trim();
+    const addr = document.getElementById("locAddr").value.trim();
+    if (!name) return say(document.getElementById("locMsg"), "A name is required.", "err");
+    try {
+      await saveLocation(null, { name, address: addr, mapsUrl: "", notes: "" });
+      document.getElementById("locName").value = "";
+      document.getElementById("locAddr").value = "";
+      say(document.getElementById("locMsg"), "Location added.");
+      await refresh();
+    } catch (err) {
+      say(document.getElementById("locMsg"), `Failed: ${esc(err.message)}`, "err");
+    }
+  };
+});
+
+async function refresh() {
+  try {
+    const [teams, events, locs] = await Promise.all([listTeams(), listEvents(), listLocations()]);
+    document.getElementById("cTeams").textContent  = teams.length;
+    document.getElementById("cEvents").textContent = events.length;
+    document.getElementById("cLocs").textContent   = locs.length;
+
+    document.getElementById("locList").innerHTML = locs.length
+      ? locs.map(l => {
+          const u = mapsUrl(l);
+          return `<div style="padding:7px 0;border-bottom:1px solid var(--line)">
+            <strong>${esc(l.name)}</strong>
+            ${l.address ? `<br><span style="color:var(--muted);font-size:.86rem">${esc(l.address)}</span>` : ""}
+            ${u ? ` <a href="${u}" target="_blank" rel="noopener" style="font-size:.82rem">map</a>` : ""}
+          </div>`;
+        }).join("")
+      : `<p style="color:var(--muted);font-size:.88rem;margin:0">No locations yet.</p>`;
+  } catch (err) {
+    say(document.getElementById("msg"), `Couldn't load data: ${esc(err.message)}`, "err");
+  }
+}
+</script>
+<script type="module" src="../js/nav.js"></script>
+</body>
+</html>

@@ -180,7 +180,16 @@ Your Firebase web config ships in the client and that is fine — it's designed 
 
 Two paths, because you have two very different jobs:
 
-**Games — bulk, from the league.** `admin/import.html`: paste tab- or comma-separated rows out of whatever the league sends (spreadsheet, email table, PDF copy-paste), map columns once, preview the parsed rows with warnings for unknown locations or bad dates, then commit. One paste, whole season. Re-running it updates matched events instead of duplicating — league schedules get revised.
+**Games — bulk, from the league.** `admin/import.html`. Assumed format: a CSV of
+`date, opponent, location, time`, one file per grade — you pick the team in the UI and it
+applies to every row. If a grade/team or home-away column shows up, it's auto-detected and used.
+Paste or upload, check the detected column mapping, review a preview showing real weekdays,
+then commit. Rows already on the schedule (same team, same day, same opponent) are flagged and
+skipped by default, so re-importing a revised league file doesn't duplicate the season.
+Unknown locations are created on import; add their street addresses afterward so map links work.
+
+Dates without a year infer one from the season: Sep–Dec take the starting year, Jan–Aug the next.
+Parsing is covered by 34 unit tests, mostly guarding against the UTC off-by-one.
 
 **Practices — recurring, from you.** In `admin/events.html`:
 - Add an event in under 15 seconds: type, team, date, time, location dropdown.
@@ -206,13 +215,25 @@ Phase 5 candidate: an `.ics` feed so parents subscribe once and stop asking. You
 
 ## 7. Build phases
 
-**Phase 0 — Foundation.** Repo, Pages enabled, Firebase project, Firestore, Google Auth, first rules, `firebase-config.js`, shared CSS + nav shell, logo in place.
+**Phase 0 — Foundation.** ✅ *Done.* Repo, Pages enabled, `firebase-config.js` (awaiting real
+values), shared CSS + nav shell, favicon. Logo still to add.
 
-**Phase 1 — Static public site.** Home, Register, Program, 404. *Deployable and useful on its own* — this alone beats emailing a form link around, and it's the version you can put in front of PAL early.
+**Phase 1 — Static public site.** ✅ *Done and live.* Home, Register, Program, 404, plus stubs.
+Live at https://sgiordano45.github.io/MountainsidePAL/
 
-**Phase 2 — Schedule engine.** `events` + `locations`, `admin/events.html`, `admin/import.html`, `schedule.html` both views. Biggest chunk, highest payoff. The importer belongs here rather than later, since the league hands you the schedule in bulk.
+**Phase 2 — Schedule engine.** ✅ *Code complete, awaiting a Firebase project.*
+`events` + `locations`, `admin/events.html` (add/edit/duplicate/cancel, repeat-weekly),
+`admin/import.html` (CSV import), `schedule.html` (list + calendar), `login.html`,
+`admin/index.html` (season seeding + locations).
 
-**Phase 3 — Auth, teams, rosters.** Google sign-in, `users` roles, rules tightened, `teams.html`, `team.html`, gated rosters, `admin/teams.html`.
+A thin slice of auth came forward into this phase out of necessity: a public GitHub Pages site
+can't have open Firestore write rules, so admin writes are gated by Google sign-in against a
+single hardcoded UID in both `js/auth.js` and `firestore.rules`. Roles and coach scoping stay
+in Phase 3 — swapping the hardcoded UID for a `users/{uid}` lookup is a two-line rules change.
+
+**Phase 3 — Teams, rosters, roles.** `users` collection and roles, coach scoping, rules
+tightened, `teams.html`, `team.html`, gated rosters, `admin/teams.html`. Google sign-in
+already exists from Phase 2.
 
 **Phase 4 — Announcements & coaches.** Announcement CRUD, site-wide alert banner, `announcements.html`, `coaches.html`. This is the weather-cancellation path — want it before the first January snow.
 
