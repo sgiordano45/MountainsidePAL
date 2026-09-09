@@ -10,7 +10,7 @@ import { getFirebase, isConfigured } from "./firebase-config.js";
 
 export const ADMIN_UIDS = [
   // Sign in at login.html, copy the UID it prints, paste it here AND in firestore.rules
-  "REPLACE_WITH_YOUR_UID"
+  "zNT9XYRybMQEabbxXFShRIBSZHy2"
 ];
 
 export const adminListReady = !ADMIN_UIDS.some(u => u.startsWith("REPLACE_"));
