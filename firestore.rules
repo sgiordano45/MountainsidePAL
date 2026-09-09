@@ -1,0 +1,67 @@
+rules_version = '2';
+
+// Mountainside PAL Basketball
+// Publish in Phase 3, once Google sign-in and the users collection exist.
+// Until then Firestore should stay in locked mode (deny all).
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    function isAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && userDoc().role == 'admin';
+    }
+    function isCoachOf(teamId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && userDoc().role == 'coach'
+        && teamId in userDoc().teamIds;
+    }
+
+    // ---- public read, admin write ----
+    match /config/{doc}       { allow read: if true; allow write: if isAdmin(); }
+    match /seasons/{doc}      { allow read: if true; allow write: if isAdmin(); }
+    match /locations/{doc}    { allow read: if true; allow write: if isAdmin(); }
+    match /coaches/{doc}      { allow read: if true; allow write: if isAdmin(); }
+
+    // ---- teams: public doc, protected roster ----
+    match /teams/{teamId} {
+      allow read: if true;
+      allow write: if isAdmin();
+
+      match /roster/{playerId} {
+        allow read:  if signedIn();                       // any Google account
+        allow write: if isAdmin() || isCoachOf(teamId);
+      }
+    }
+
+    // ---- events ----
+    match /events/{eventId} {
+      allow read: if true;
+      allow create: if isAdmin() || isCoachOf(request.resource.data.teamId);
+      allow update, delete: if isAdmin() || isCoachOf(resource.data.teamId);
+    }
+
+    // ---- announcements ----
+    match /announcements/{id} {
+      allow read: if true;
+      allow create: if isAdmin() || isCoachOf(request.resource.data.teamId);
+      allow update, delete: if isAdmin() || isCoachOf(resource.data.teamId);
+    }
+
+    // ---- users: roles are never self-assigned ----
+    match /users/{uid} {
+      allow read:  if isAdmin() || (signedIn() && request.auth.uid == uid);
+      allow write: if isAdmin();
+    }
+
+    match /{document=**} { allow read, write: if false; }
+  }
+}
