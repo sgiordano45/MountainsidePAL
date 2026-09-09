@@ -22,10 +22,17 @@
 
 <script type="module">
 import { isConfigured } from "./js/firebase-config.js";
-import { onAuthChange, signInWithGoogle, signOutUser, isAdmin, adminListReady, setupNoticeHTML }
-  from "./js/auth.js";
+import { onAuthChange, signInWithGoogle, signOutUser, isAdmin, adminListReady,
+         setupNoticeHTML, explainAuthError, completeRedirectSignIn } from "./js/auth.js";
 
 const mount = document.getElementById("mount");
+
+function showError(err) {
+  const box = document.getElementById("authErr");
+  if (box) box.innerHTML = `<div class="msg msg--err" style="text-align:left">${
+    explainAuthError(err)}</div>`;
+  console.error("[auth]", err);
+}
 
 if (!isConfigured) {
   mount.innerHTML = setupNoticeHTML();
@@ -40,9 +47,17 @@ if (!isConfigured) {
             editing tools.
           </p>
           <button class="btn btn--primary btn--lg" id="in">Sign in with Google</button>
+          <div id="authErr" style="margin-top:18px"></div>
         </div>`;
-      document.getElementById("in").onclick = () =>
-        signInWithGoogle().catch(e => alert(e.message));
+      document.getElementById("in").onclick = (e) => {
+        e.target.disabled = true;
+        document.getElementById("authErr").innerHTML = "";
+        signInWithGoogle()
+          .catch(showError)
+          .finally(() => { e.target.disabled = false; });
+      };
+      // pick up a result if we came back from the redirect flow
+      completeRedirectSignIn().then(r => { if (r?.error) showError(r.error); });
       return;
     }
 

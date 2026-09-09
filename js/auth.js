@@ -17,14 +17,100 @@ export const adminListReady = !ADMIN_UIDS.some(u => u.startsWith("REPLACE_"));
 
 const AUTH_URL = "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
+/**
+ * Sign in with Google.
+ *
+ * Popup first, because it keeps the user on the page. Browsers that block the
+ * popup (Safari with strict settings, some in-app browsers, iOS) fall back to a
+ * full-page redirect, which always works but reloads the page — completeRedirectSignIn()
+ * picks the result back up on the way in.
+ */
 export async function signInWithGoogle() {
   const fb = await getFirebase();
   if (!fb) throw new Error("Firebase is not configured yet.");
-  const { GoogleAuthProvider, signInWithPopup } = await import(AUTH_URL);
+  const { GoogleAuthProvider, signInWithPopup, signInWithRedirect } = await import(AUTH_URL);
+
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: "select_account" });
-  const res = await signInWithPopup(fb.auth, provider);
-  return res.user;
+
+  const POPUP_FAILED = [
+    "auth/popup-blocked",
+    "auth/cancelled-popup-request",
+    "auth/operation-not-supported-in-this-environment",
+    "auth/web-storage-unsupported"
+  ];
+
+  try {
+    const res = await signInWithPopup(fb.auth, provider);
+    return res.user;
+  } catch (err) {
+    if (POPUP_FAILED.includes(err.code)) {
+      await signInWithRedirect(fb.auth, provider);
+      return null;                      // page navigates away
+    }
+    throw err;
+  }
+}
+
+/** Call once on page load to collect a redirect-flow result. */
+export async function completeRedirectSignIn() {
+  if (!isConfigured) return null;
+  try {
+    const fb = await getFirebase();
+    const { getRedirectResult } = await import(AUTH_URL);
+    const res = await getRedirectResult(fb.auth);
+    return res?.user || null;
+  } catch (err) {
+    return { error: err };
+  }
+}
+
+/**
+ * Turn a Firebase auth error into something actionable. Every one of these is a
+ * console setting, not a code bug — which is why the raw message is unhelpful.
+ */
+export function explainAuthError(err) {
+  const code = err?.code || "";
+  const host = location.hostname;
+
+  switch (code) {
+    case "auth/unauthorized-domain":
+      return `<strong>${host} isn't an authorised domain.</strong>
+        In the Firebase console go to <em>Authentication &rarr; Settings &rarr;
+        Authorized domains</em> and add <code>${host}</code>. This is the usual
+        cause on GitHub Pages, and it takes a minute or two to take effect.`;
+
+    case "auth/operation-not-allowed":
+      return `<strong>Google sign-in isn't enabled for this project.</strong>
+        Go to <em>Authentication &rarr; Sign-in method</em>, enable
+        <em>Google</em>, set a support email, and save.`;
+
+    case "auth/configuration-not-found":
+      return `<strong>No auth configuration found.</strong> Authentication hasn't
+        been set up on this Firebase project yet — open <em>Authentication</em> in
+        the console and click Get started, then enable Google.`;
+
+    case "auth/popup-blocked":
+      return `<strong>The sign-in popup was blocked.</strong> Allow popups for this
+        site and try again — it should switch to a full-page redirect automatically.`;
+
+    case "auth/popup-closed-by-user":
+    case "auth/cancelled-popup-request":
+      return `Sign-in was cancelled before it finished. Try again.`;
+
+    case "auth/invalid-api-key":
+    case "auth/api-key-not-valid.-please-pass-a-valid-api-key.":
+      return `<strong>The API key in <code>js/firebase-config.js</code> isn't valid
+        for this project.</strong> Re-copy the web config from
+        <em>Project settings &rarr; Your apps</em>.`;
+
+    case "auth/network-request-failed":
+      return `Network request failed — check the connection and try again.`;
+
+    default:
+      return `Sign-in failed${code ? ` (<code>${code}</code>)` : ""}: ${
+        err?.message || "unknown error"}`;
+  }
 }
 
 export async function signOutUser() {
@@ -74,7 +160,8 @@ export async function requireAdmin(mountEl, onReady) {
                <code>firestore.rules</code>, then publish the rules.
              </p>
              <button class="btn btn--ghost" id="gateOut">Sign out</button>`
-          : `<button class="btn btn--primary btn--lg" id="gateIn">Sign in with Google</button>`}
+          : `<button class="btn btn--primary btn--lg" id="gateIn">Sign in with Google</button>
+             <div id="gateErr" style="margin-top:18px"></div>`}
         ${!adminListReady
           ? `<p class="msg msg--warn" style="text-align:left;margin-top:20px">
                <strong>No admin UID configured yet.</strong> Sign in above, copy the UID
@@ -84,7 +171,17 @@ export async function requireAdmin(mountEl, onReady) {
 
     const inBtn  = document.getElementById("gateIn");
     const outBtn = document.getElementById("gateOut");
-    if (inBtn)  inBtn.onclick  = () => signInWithGoogle().catch(e => alert(e.message));
+    if (inBtn) inBtn.onclick = (e) => {
+      e.target.disabled = true;
+      signInWithGoogle()
+        .catch(err => {
+          const box = document.getElementById("gateErr");
+          if (box) box.innerHTML =
+            `<div class="msg msg--err" style="text-align:left">${explainAuthError(err)}</div>`;
+          console.error("[auth]", err);
+        })
+        .finally(() => { e.target.disabled = false; });
+    };
     if (outBtn) outBtn.onclick = () => signOutUser();
   };
 
